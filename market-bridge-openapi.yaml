@@ -18,10 +18,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  ok:
-                    type: boolean
-                  ts:
-                    type: number
+                  ok: { type: boolean }
+                  ts: { type: number }
+
   /oauth/upstox/login:
     get:
       operationId: oauth_upstox_login
@@ -30,11 +29,11 @@ paths:
         - name: user_key
           in: query
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         "302":
           description: Redirect to Upstox authorization dialog
+
   /oauth/upstox/callback:
     get:
       operationId: oauth_upstox_callback
@@ -43,20 +42,18 @@ paths:
         - name: code
           in: query
           required: true
-          schema:
-            type: string
+          schema: { type: string }
         - name: state
           in: query
           required: false
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         "200":
           description: HTML result (linked or error)
           content:
             text/html:
-              schema:
-                type: string
+              schema: { type: string }
+
   /api/map:
     get:
       operationId: map_symbol
@@ -74,7 +71,8 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/MapResponse"
+
   /api/ltp:
     get:
       operationId: get_ltp
@@ -94,7 +92,8 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/LTPResponse"
+
   /api/historical:
     get:
       operationId: get_historical_yf
@@ -108,14 +107,10 @@ paths:
             example: RELIANCE.NS
         - name: period
           in: query
-          schema:
-            type: string
-            default: "6mo"
+          schema: { type: string, default: "6mo" }
         - name: interval
           in: query
-          schema:
-            type: string
-            default: "1d"
+          schema: { type: string, default: "1d" }
       responses:
         "200":
           description: Candle list (yfinance)
@@ -123,6 +118,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HistoricalResponse"
+
   /api/historical_upstox:
     get:
       operationId: get_historical_upstox
@@ -132,39 +128,25 @@ paths:
       parameters:
         - name: symbol
           in: query
-          schema:
-            type: string
-            example: RELIANCE.NS
+          schema: { type: string, example: RELIANCE.NS }
         - name: instrument_key
           in: query
-          schema:
-            type: string
+          schema: { type: string }
         - name: unit
           in: query
-          schema:
-            type: string
-            enum: [days, weeks, months]
-            default: weeks
+          schema: { type: string, enum: [days, weeks, months], default: weeks }
         - name: interval
           in: query
-          schema:
-            type: string
-            default: "1"
+          schema: { type: string, default: "1" }
         - name: years
           in: query
-          schema:
-            type: integer
-            default: 10
+          schema: { type: integer, default: 10 }
         - name: to_date
           in: query
-          schema:
-            type: string
-            format: date
+          schema: { type: string, format: date }
         - name: from_date
           in: query
-          schema:
-            type: string
-            format: date
+          schema: { type: string, format: date }
       responses:
         "200":
           description: Candle list (Upstox)
@@ -172,6 +154,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HistoricalUpstoxResponse"
+
   /api/indicators:
     post:
       operationId: compute_indicators
@@ -191,6 +174,7 @@ paths:
                 $ref: "#/components/schemas/IndicatorsResp"
         "404":
           description: No data
+
   /api/fundamentals:
     get:
       operationId: get_fundamentals
@@ -199,16 +183,15 @@ paths:
         - name: symbol
           in: query
           required: true
-          schema:
-            type: string
-            example: RELIANCE.NS
+          schema: { type: string, example: RELIANCE.NS }
       responses:
         "200":
           description: Fundamentals
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/FundamentalsResponse"
+
   /api/update_constituents:
     post:
       operationId: update_constituents
@@ -217,16 +200,15 @@ paths:
         - name: index
           in: query
           required: true
-          schema:
-            type: string
-            example: "NIFTY 50"
+          schema: { type: string, example: "NIFTY 50" }
       responses:
         "200":
           description: Update result
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/UpdateConstituentsResponse"
+
   /api/constituents:
     get:
       operationId: get_constituents
@@ -235,16 +217,15 @@ paths:
         - name: index
           in: query
           required: true
-          schema:
-            type: string
-            example: "NIFTY 50"
+          schema: { type: string, example: "NIFTY 50" }
       responses:
         "200":
           description: Constituents list
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/ConstituentsResponse"
+
   /api/listings:
     get:
       operationId: get_listings
@@ -255,16 +236,15 @@ paths:
         - name: exchange
           in: query
           required: true
-          schema:
-            type: string
-            example: NSE_EQ
+          schema: { type: string, example: NSE_EQ }
       responses:
         "200":
           description: Listings
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/ListingsResponse"
+
   /api/screen_indices:
     post:
       operationId: screen_indices
@@ -282,6 +262,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScreenIndicesResp"
+
   /api/signal:
     post:
       operationId: signal_endpoint
@@ -299,31 +280,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalResp"
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
+
   schemas:
+    # ---- shared candle schemas ----
     Candle:
       type: object
       properties:
-        t:
-          type: string
-          format: date-time
+        t: { type: string, format: date-time }
         o: { type: number }
         h: { type: number }
         l: { type: number }
         c: { type: number }
         v: { type: number }
+
     HistoricalResponse:
       type: object
       properties:
         symbol: { type: string }
         candles:
           type: array
-          items:
-            $ref: "#/components/schemas/Candle"
+          items: { $ref: "#/components/schemas/Candle" }
+
     HistoricalUpstoxResponse:
       type: object
       properties:
@@ -335,8 +318,88 @@ components:
         count: { type: integer }
         candles:
           type: array
-          items:
-            $ref: "#/components/schemas/Candle"
+          items: { $ref: "#/components/schemas/Candle" }
+
+    # ---- new explicit schemas for endpoints that complained ----
+    MapResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        found: { type: boolean }
+        trading_symbol: { type: string, nullable: true }
+        instrument_key: { type: string, nullable: true }
+        segment: { type: string, nullable: true }
+        exchange: { type: string, nullable: true }
+        short_name: { type: string, nullable: true }
+
+    LTPQuote:
+      type: object
+      properties:
+        last_traded_price: { type: number, nullable: true }
+        ltp: { type: number, nullable: true }
+        last_price: { type: number, nullable: true }
+        close: { type: number, nullable: true }
+
+    LTPResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/LTPQuote"
+
+    FundamentalsResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        PE: { type: number, nullable: true }
+        PB: { type: number, nullable: true }
+        MarketCap: { type: number, nullable: true }
+        ROCE_approx: { type: number, nullable: true }
+
+    UpdateConstituentsResponse:
+      type: object
+      properties:
+        index: { type: string }
+        source: { type: string, nullable: true }
+        count: { type: integer }
+        file: { type: string, nullable: true }
+        message: { type: string, nullable: true }
+
+    ConstituentsEntry:
+      type: object
+      properties:
+        symbol: { type: string }
+        company: { type: string }
+
+    ConstituentsResponse:
+      type: object
+      properties:
+        index: { type: string }
+        found: { type: boolean }
+        count: { type: integer }
+        constituents:
+          type: array
+          items: { $ref: "#/components/schemas/ConstituentsEntry" }
+        message: { type: string, nullable: true }
+
+    ListingEntry:
+      type: object
+      properties:
+        trading_symbol: { type: string }
+        instrument_key: { type: string }
+        short_name: { type: string }
+
+    ListingsResponse:
+      type: object
+      properties:
+        exchange: { type: string }
+        count: { type: integer }
+        listings:
+          type: array
+          items: { $ref: "#/components/schemas/ListingEntry" }
+
+    # ---- request/response for indicators & screeners ----
     IndicatorsReq:
       type: object
       required: [symbol]
@@ -346,13 +409,11 @@ components:
           type: string
           enum: [auto, upstox, yfinance]
           default: auto
-        unit:
-          type: string
-          enum: [days, weeks, months]
-          default: days
+        unit: { type: string, enum: [days, weeks, months], default: days }
         interval: { type: string, default: "1" }
         period: { type: string, default: "1y" }
         hist_date: { type: string, format: date }
+
     IndicatorsResp:
       type: object
       properties:
@@ -373,18 +434,13 @@ components:
             MA20: { type: number, nullable: true }
             Upper: { type: number, nullable: true }
             Lower: { type: number, nullable: true }
+
     ScreenIndicesReq:
       type: object
       properties:
-        indices:
-          type: array
-          items: { type: string }
-        symbols:
-          type: array
-          items: { type: string }
-        strategies:
-          type: array
-          items: { type: string }
+        indices: { type: array, items: { type: string } }
+        symbols: { type: array, items: { type: string } }
+        strategies: { type: array, items: { type: string } }
         min_strategies: { type: integer, default: 2 }
         balance: { type: number, default: 100000 }
         data_source:
@@ -395,6 +451,7 @@ components:
         interval: { type: string, default: "1" }
         historical_date: { type: string, format: date }
         use_upstox_price: { type: boolean, default: true }
+
     StrategyDetail:
       type: object
       properties:
@@ -405,14 +462,13 @@ components:
         target: { type: number, nullable: true }
         rsi: { type: number, nullable: true }
         ma200: { type: number, nullable: true }
+
     ScreenIndicesResp:
       type: object
       properties:
         requested_indices: { type: array, items: { type: string }, nullable: true }
         requested_symbols: { type: array, items: { type: string }, nullable: true }
-        strategies_run:
-          type: array
-          items: { type: string }
+        strategies_run: { type: array, items: { type: string } }
         min_strategies_required: { type: integer }
         historical_date: { type: string, nullable: true }
         results_count: { type: integer }
@@ -429,6 +485,7 @@ components:
               hit_count: { type: integer }
               combined: { type: string }
         timestamp: { type: string, format: date-time }
+
     SignalReq:
       type: object
       required: [symbol]
@@ -439,6 +496,7 @@ components:
         unit: { type: string, default: days }
         interval: { type: string, default: "1" }
         historical_date: { type: string, format: date }
+
     SignalResp:
       type: object
       properties:
@@ -450,3 +508,4 @@ components:
           additionalProperties: { $ref: "#/components/schemas/StrategyDetail" }
         hit_count: { type: integer }
         combined: { type: string }
+
