@@ -1,15 +1,14 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: Market Bridge API (Upstox + yfinance)
-  description: |
-    API wrapper to fetch real-time & historical market data from Upstox (primary) with yfinance fallback,
-    calculate indicators and run screeners/strategies. Base URL: https://upstox-api.onrender.com
   version: "1.2.0"
+  description: Market Bridge wrapper for Upstox + yfinance (indicators, screeners, LTP, historical).
 servers:
   - url: https://upstox-api.onrender.com
 paths:
   /health:
     get:
+      operationId: health_check
       summary: Health check
       responses:
         "200":
@@ -25,6 +24,7 @@ paths:
                     type: number
   /oauth/upstox/login:
     get:
+      operationId: oauth_upstox_login
       summary: Redirect to Upstox OAuth login dialog
       parameters:
         - name: user_key
@@ -37,6 +37,7 @@ paths:
           description: Redirect to Upstox authorization dialog
   /oauth/upstox/callback:
     get:
+      operationId: oauth_upstox_callback
       summary: OAuth callback for Upstox
       parameters:
         - name: code
@@ -58,6 +59,7 @@ paths:
                 type: string
   /api/map:
     get:
+      operationId: map_symbol
       summary: Map symbol to Upstox instrument
       parameters:
         - name: symbol
@@ -73,16 +75,9 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  symbol: { type: string }
-                  found: { type: boolean }
-                  trading_symbol: { type: string }
-                  instrument_key: { type: string }
-                  segment: { type: string }
-                  exchange: { type: string }
-                  short_name: { type: string }
   /api/ltp:
     get:
+      operationId: get_ltp
       summary: Get LTP from Upstox
       security:
         - bearerAuth: []
@@ -95,13 +90,14 @@ paths:
             example: "NSE_EQ|INE002A01018"
       responses:
         "200":
-          description: LTP response (Upstox raw)
+          description: LTP response (Upstox)
           content:
             application/json:
               schema:
                 type: object
   /api/historical:
     get:
+      operationId: get_historical_yf
       summary: Get historical candles via yfinance (fallback)
       parameters:
         - name: symbol
@@ -112,13 +108,11 @@ paths:
             example: RELIANCE.NS
         - name: period
           in: query
-          required: false
           schema:
             type: string
             default: "6mo"
         - name: interval
           in: query
-          required: false
           schema:
             type: string
             default: "1d"
@@ -131,49 +125,43 @@ paths:
                 $ref: "#/components/schemas/HistoricalResponse"
   /api/historical_upstox:
     get:
+      operationId: get_historical_upstox
       summary: Get historical candles from Upstox (preferred for long-range)
       security:
         - bearerAuth: []
       parameters:
         - name: symbol
           in: query
-          required: false
           schema:
             type: string
             example: RELIANCE.NS
         - name: instrument_key
           in: query
-          required: false
           schema:
             type: string
         - name: unit
           in: query
-          required: false
           schema:
             type: string
             enum: [days, weeks, months]
             default: weeks
         - name: interval
           in: query
-          required: false
           schema:
             type: string
             default: "1"
         - name: years
           in: query
-          required: false
           schema:
             type: integer
             default: 10
         - name: to_date
           in: query
-          required: false
           schema:
             type: string
             format: date
         - name: from_date
           in: query
-          required: false
           schema:
             type: string
             format: date
@@ -186,7 +174,8 @@ paths:
                 $ref: "#/components/schemas/HistoricalUpstoxResponse"
   /api/indicators:
     post:
-      summary: Compute indicators (RSI, SMA, EMA, MACD, Bollinger)
+      operationId: compute_indicators
+      summary: Compute RSI, SMA/EMA, MACD, Bollinger
       requestBody:
         required: true
         content:
@@ -204,6 +193,7 @@ paths:
           description: No data
   /api/fundamentals:
     get:
+      operationId: get_fundamentals
       summary: Get fundamentals (PE, PB, MarketCap, approximate ROCE)
       parameters:
         - name: symbol
@@ -219,14 +209,9 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  symbol: { type: string }
-                  PE: { type: number, nullable: true }
-                  PB: { type: number, nullable: true }
-                  MarketCap: { type: number, nullable: true }
-                  ROCE_approx: { type: number, nullable: true }
   /api/update_constituents:
     post:
+      operationId: update_constituents
       summary: Update constituents for an index (fetch & cache)
       parameters:
         - name: index
@@ -242,13 +227,9 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  index: { type: string }
-                  source: { type: string }
-                  count: { type: integer }
-                  file: { type: string }
   /api/constituents:
     get:
+      operationId: get_constituents
       summary: Get cached constituents for an index
       parameters:
         - name: index
@@ -264,19 +245,9 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  index: { type: string }
-                  found: { type: boolean }
-                  count: { type: integer }
-                  constituents:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        symbol: { type: string }
-                        company: { type: string }
   /api/listings:
     get:
+      operationId: get_listings
       summary: Dump Upstox instrument listings for an exchange (NSE_EQ or BSE_EQ)
       security:
         - bearerAuth: []
@@ -294,20 +265,10 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  exchange: { type: string }
-                  count: { type: integer }
-                  listings:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        trading_symbol: { type: string }
-                        instrument_key: { type: string }
-                        short_name: { type: string }
   /api/screen_indices:
     post:
-      summary: Run screeners on indices or symbol lists using multiple strategies
+      operationId: screen_indices
+      summary: Run screeners on indices or symbol lists
       requestBody:
         required: true
         content:
@@ -323,6 +284,7 @@ paths:
                 $ref: "#/components/schemas/ScreenIndicesResp"
   /api/signal:
     post:
+      operationId: signal_endpoint
       summary: Get per-strategy signals for a single symbol
       requestBody:
         required: true
@@ -337,13 +299,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalResp"
-
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
   schemas:
     Candle:
       type: object
@@ -351,21 +311,15 @@ components:
         t:
           type: string
           format: date-time
-        o:
-          type: number
-        h:
-          type: number
-        l:
-          type: number
-        c:
-          type: number
-        v:
-          type: number
+        o: { type: number }
+        h: { type: number }
+        l: { type: number }
+        c: { type: number }
+        v: { type: number }
     HistoricalResponse:
       type: object
       properties:
-        symbol:
-          type: string
+        symbol: { type: string }
         candles:
           type: array
           items:
@@ -387,7 +341,7 @@ components:
       type: object
       required: [symbol]
       properties:
-        symbol: { type: string, example: "RELIANCE.NS" }
+        symbol: { type: string }
         data_source:
           type: string
           enum: [auto, upstox, yfinance]
@@ -396,28 +350,16 @@ components:
           type: string
           enum: [days, weeks, months]
           default: days
-        interval:
-          type: string
-          default: "1"
-        period:
-          type: string
-          default: "1y"
-        hist_date:
-          type: string
-          format: date
+        interval: { type: string, default: "1" }
+        period: { type: string, default: "1y" }
+        hist_date: { type: string, format: date }
     IndicatorsResp:
       type: object
       properties:
         symbol: { type: string }
         as_of: { type: string, format: date }
-        SMA:
-          type: object
-          additionalProperties:
-            type: number
-        EMA:
-          type: object
-          additionalProperties:
-            type: number
+        SMA: { type: object, additionalProperties: { type: number } }
+        EMA: { type: object, additionalProperties: { type: number } }
         RSI_14: { type: number, nullable: true }
         MACD:
           type: object
@@ -442,29 +384,17 @@ components:
           items: { type: string }
         strategies:
           type: array
-          items: { type: string, example: "PTJ" }
-        min_strategies:
-          type: integer
-          default: 2
-        balance:
-          type: number
-          default: 100000.0
+          items: { type: string }
+        min_strategies: { type: integer, default: 2 }
+        balance: { type: number, default: 100000 }
         data_source:
           type: string
           enum: [auto, upstox, yfinance]
           default: auto
-        unit:
-          type: string
-          default: days
-        interval:
-          type: string
-          default: "1"
-        historical_date:
-          type: string
-          format: date
-        use_upstox_price:
-          type: boolean
-          default: true
+        unit: { type: string, default: days }
+        interval: { type: string, default: "1" }
+        historical_date: { type: string, format: date }
+        use_upstox_price: { type: boolean, default: true }
     StrategyDetail:
       type: object
       properties:
@@ -478,8 +408,8 @@ components:
     ScreenIndicesResp:
       type: object
       properties:
-        requested_indices: { type: array, items: { type: string } , nullable: true}
-        requested_symbols: { type: array, items: { type: string } , nullable: true}
+        requested_indices: { type: array, items: { type: string }, nullable: true }
+        requested_symbols: { type: array, items: { type: string }, nullable: true }
         strategies_run:
           type: array
           items: { type: string }
@@ -503,7 +433,7 @@ components:
       type: object
       required: [symbol]
       properties:
-        symbol: { type: string, example: "RELIANCE.NS" }
+        symbol: { type: string }
         balance: { type: number, default: 100000.0 }
         data_source: { type: string, enum: [auto, upstox, yfinance], default: auto }
         unit: { type: string, default: days }
