@@ -280,6 +280,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalResp"
+  /api/breakout_signal:
+    post:
+      operationId: breakout_signal
+      summary: Detect breakout for a single symbol with volume confirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol]
+              properties:
+                symbol: { type: string, example: RELIANCE.NS }
+                params:
+                  $ref: "#/components/schemas/BreakoutParams"
+      responses:
+        "200":
+          description: Breakout result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BreakoutHit"
+
+  /api/breakouts:
+    post:
+      operationId: breakouts_scan
+      summary: Scan multiple symbols or indices for volume-confirmed breakouts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BreakoutParams"
+      responses:
+        "200":
+          description: Breakouts scan result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BreakoutResponse"
+
 
 components:
   securitySchemes:
@@ -508,4 +549,16 @@ components:
           additionalProperties: { $ref: "#/components/schemas/StrategyDetail" }
         hit_count: { type: integer }
         combined: { type: string }
+
+    BreakoutParams:
+      type: object
+      properties:
+        symbols: { type: array, items: { type: string }, nullable: true }
+        indices: { type: array, items: { type: string }, nullable: true }
+        data_source: { type: string, enum: [auto, upstox, yfinance], default: auto }
+        unit: { type: string, enum: [days, weeks, months], default: days }
+        interval: { type: string, default: "1" }
+        years: { type: integer, default: 2 }
+        yf_period: { type: string, default: "1y" }
+        level_method: { type: string, enum: [don
 
