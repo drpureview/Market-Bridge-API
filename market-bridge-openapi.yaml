@@ -560,5 +560,43 @@ components:
         interval: { type: string, default: "1" }
         years: { type: integer, default: 2 }
         yf_period: { type: string, default: "1y" }
-        level_method: { type: string, enum: [don
+        level_method: { type: string, enum: [donchian20, donchian55, hhv_52w], default: donchian20 }
+        vol_avg_window: { type: integer, default: 20 }
+        vol_spike_min: { type: number, default: 1.5 }
+        sustained_sessions: { type: integer, default: 2 }
+        sustained_min_ratio: { type: number, default: 1.0 }
+        divergence_window: { type: integer, default: 5 }
+        pullback_window: { type: integer, default: 10 }
+        pullback_volume_ratio_max: { type: number, default: 0.5 }
+        lookback_bars: { type: integer, default: 180 }
+        require_pattern: { type: boolean, default: false }
 
+    BreakoutHit:
+      type: object
+      properties:
+        symbol: { type: string }
+        breakout_date: { type: string, nullable: true }
+        breakout_level: { type: number, nullable: true }
+        close_at_breakout: { type: number, nullable: true }
+        volume_at_breakout: { type: number, nullable: true }
+        avg20_volume: { type: number, nullable: true }
+        volume_ratio: { type: number, nullable: true }
+        sustained_ok: { type: boolean, nullable: true }
+        divergence_flag: { type: boolean, nullable: true }
+        candle_pattern: { type: string, nullable: true }
+        pullback_ok: { type: boolean, nullable: true }
+        score: { type: integer, default: 0 }
+        verdict: { type: string, enum: [CONFIRMED, WEAK, FAILED, NO_BREAKOUT, ERROR] }
+        error: { type: string, nullable: true }
+
+    BreakoutResponse:
+      type: object
+      properties:
+        requested_symbols: { type: array, items: { type: string }, nullable: true }
+        requested_indices: { type: array, items: { type: string }, nullable: true }
+        params: { $ref: "#/components/schemas/BreakoutParams" }
+        results_count: { type: integer }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/BreakoutHit" }
+        timestamp: { type: string }
