@@ -280,46 +280,130 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalResp"
-  /api/breakout_signal:
+   /api/breakout_signal:
     post:
       operationId: breakout_signal
-      summary: Detect breakout for a single symbol with volume confirmation
+      tags: [Breakouts]
+      summary: Detect breakout for a single symbol (volume-confirmed)
+      description: >
+        Uses latest available candles (yfinance for daily by default; Upstox for weekly/monthly)
+        and applies Donchian/HHV levels + volume rules to confirm breakouts.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [symbol]
-              properties:
-                symbol: { type: string, example: RELIANCE.NS }
-                params:
-                  $ref: "#/components/schemas/BreakoutParams"
+              $ref: '#/components/schemas/BreakoutSignalReq'
+            example:
+              symbol: RELIANCE.NS
+              params:
+                data_source: auto
+                unit: days
+                interval: "1"
+                yf_period: 1y
+                level_method: donchian20
+                vol_avg_window: 20
+                vol_spike_min: 1.5
+                sustained_sessions: 2
+                sustained_min_ratio: 1.0
+                divergence_window: 5
+                pullback_window: 10
+                pullback_volume_ratio_max: 0.5
+                lookback_bars: 180
+                require_pattern: false
       responses:
         "200":
-          description: Breakout result
+          description: Breakout detection result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BreakoutHit"
+                $ref: '#/components/schemas/BreakoutSignalResp'
+              example:
+                symbol: RELIANCE.NS
+                breakout_date: "2025-06-10"
+                breakout_level: 2785.0
+                close_at_breakout: 2801.5
+                current_price: 2810.2
+                volume_at_breakout: 12000000
+                avg20_volume: 7000000
+                volume_ratio: 1.71
+                sustained_ok: true
+                divergence_flag: false
+                candle_pattern: bullish_engulfing
+                pullback_ok: true
+                score: 5
+                verdict: CONFIRMED
+                data_source_used: yfinance
+        "400":
+          description: Bad request
+        "404":
+          description: No candles available for the symbol
+        "500":
+          description: Server error
 
-  /api/breakouts:
+  /api/breakouts_symbols_one:
     post:
-      operationId: breakouts_scan
-      summary: Scan multiple symbols or indices for volume-confirmed breakouts
+      operationId: breakouts_symbols_one
+      tags: [Breakouts]
+      summary: Scan a list of symbols one-at-a-time (cursor-based)
+      description: >
+        The server analyzes exactly **one** symbol per request, indicated by `cursor`.
+        The client (Custom GPT) loops over the full list by incrementing `cursor`
+        until the response returns `done: true`. No user confirmation is needed between calls.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BreakoutParams"
+              $ref: '#/components/schemas/BreakoutsSymbolsReq'
+            example:
+              symbols: ["RELIANCE.NS","TCS.NS","INFY.NS"]
+              cursor: 0
+              params:
+                data_source: auto
+                unit: days
+                interval: "1"
+                yf_period: 1y
+                level_method: donchian20
+                vol_spike_min: 1.5
+                sustained_sessions: 2
+                pullback_volume_ratio_max: 0.5
       responses:
         "200":
-          description: Breakouts scan result
+          description: Result for the symbol at the given cursor
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BreakoutResponse"
+                $ref: '#/components/schemas/BreakoutsSymbolsResp'
+              example:
+                symbols_count: 3
+                cursor: 0
+                next_cursor: 1
+                done: false
+                analyzed_symbol: RELIANCE.NS
+                result:
+                  symbol: RELIANCE.NS
+                  breakout_date: "2025-06-10"
+                  breakout_level: 2785.0
+                  close_at_breakout: 2801.5
+                  current_price: 2810.2
+                  volume_at_breakout: 12000000
+                  avg20_volume: 7000000
+                  volume_ratio: 1.71
+                  sustained_ok: true
+                  divergence_flag: false
+                  candle_pattern: bullish_engulfing
+                  pullback_ok: true
+                  score: 5
+                  verdict: CONFIRMED
+                  data_source_used: yfinance
+        "400":
+          description: Bad request
+        "404":
+          description: No candles available for the symbol
+        "500":
+          description: Server error
+
 
 
 components:
@@ -550,34 +634,68 @@ components:
         hit_count: { type: integer }
         combined: { type: string }
 
-    BreakoutParams:
+   BreakoutParams:
       type: object
+      additionalProperties: false
       properties:
-        symbols: { type: array, items: { type: string }, nullable: true }
-        indices: { type: array, items: { type: string }, nullable: true }
-        data_source: { type: string, enum: [auto, upstox, yfinance], default: auto }
-        unit: { type: string, enum: [days, weeks, months], default: days }
-        interval: { type: string, default: "1" }
-        years: { type: integer, default: 2 }
-        yf_period: { type: string, default: "1y" }
-        level_method: { type: string, enum: [donchian20, donchian55, hhv_52w], default: donchian20 }
-        vol_avg_window: { type: integer, default: 20 }
-        vol_spike_min: { type: number, default: 1.5 }
-        sustained_sessions: { type: integer, default: 2 }
-        sustained_min_ratio: { type: number, default: 1.0 }
-        divergence_window: { type: integer, default: 5 }
-        pullback_window: { type: integer, default: 10 }
-        pullback_volume_ratio_max: { type: number, default: 0.5 }
-        lookback_bars: { type: integer, default: 180 }
-        require_pattern: { type: boolean, default: false }
+        data_source:
+          type: string
+          enum: [auto, upstox, yfinance]
+          default: auto
+        unit:
+          type: string
+          enum: [days, weeks, months]
+          default: days
+        interval:
+          type: string
+          default: "1"
+        years:
+          type: integer
+          default: 2
+        yf_period:
+          type: string
+          default: "1y"
+        level_method:
+          type: string
+          enum: [donchian20, donchian55, hhv_52w]
+          default: donchian20
+        vol_avg_window:
+          type: integer
+          default: 20
+        vol_spike_min:
+          type: number
+          default: 1.5
+        sustained_sessions:
+          type: integer
+          default: 2
+        sustained_min_ratio:
+          type: number
+          default: 1.0
+        divergence_window:
+          type: integer
+          default: 5
+        pullback_window:
+          type: integer
+          default: 10
+        pullback_volume_ratio_max:
+          type: number
+          default: 0.5
+        lookback_bars:
+          type: integer
+          default: 180
+        require_pattern:
+          type: boolean
+          default: false
 
     BreakoutHit:
       type: object
+      additionalProperties: false
       properties:
         symbol: { type: string }
         breakout_date: { type: string, nullable: true }
         breakout_level: { type: number, nullable: true }
         close_at_breakout: { type: number, nullable: true }
+        current_price: { type: number, nullable: true }
         volume_at_breakout: { type: number, nullable: true }
         avg20_volume: { type: number, nullable: true }
         volume_ratio: { type: number, nullable: true }
@@ -586,17 +704,53 @@ components:
         candle_pattern: { type: string, nullable: true }
         pullback_ok: { type: boolean, nullable: true }
         score: { type: integer, default: 0 }
-        verdict: { type: string, enum: [CONFIRMED, WEAK, FAILED, NO_BREAKOUT, ERROR] }
+        verdict:
+          type: string
+          enum: [CONFIRMED, WEAK, FAILED, NO_BREAKOUT, ERROR]
+        data_source_used: { type: string, nullable: true }
         error: { type: string, nullable: true }
+      required: [symbol, verdict]
 
-    BreakoutResponse:
+    BreakoutSignalReq:
       type: object
+      additionalProperties: false
       properties:
-        requested_symbols: { type: array, items: { type: string }, nullable: true }
-        requested_indices: { type: array, items: { type: string }, nullable: true }
-        params: { $ref: "#/components/schemas/BreakoutParams" }
-        results_count: { type: integer }
-        results:
+        symbol:
+          type: string
+          description: NSE/BSE ticker with suffix (e.g., RELIANCE.NS, TCS.NS)
+        params:
+          $ref: '#/components/schemas/BreakoutParams'
+      required: [symbol]
+
+    BreakoutSignalResp:
+      allOf:
+        - $ref: '#/components/schemas/BreakoutHit'
+
+    BreakoutsSymbolsReq:
+      type: object
+      additionalProperties: false
+      properties:
+        symbols:
           type: array
-          items: { $ref: "#/components/schemas/BreakoutHit" }
-        timestamp: { type: string }
+          description: Full list of symbols to scan. The server analyzes exactly one per call (cursor).
+          items: { type: string }
+        cursor:
+          type: integer
+          description: Index of the symbol to analyze in this request.
+          default: 0
+        params:
+          $ref: '#/components/schemas/BreakoutParams'
+      required: [symbols, cursor]
+
+    BreakoutsSymbolsResp:
+      type: object
+      additionalProperties: false
+      properties:
+        symbols_count: { type: integer }
+        cursor: { type: integer }
+        next_cursor: { type: integer, nullable: true }
+        done: { type: boolean }
+        analyzed_symbol: { type: string }
+        result:
+          $ref: '#/components/schemas/BreakoutHit'
+      required: [symbols_count, cursor, done, analyzed_symbol, result]
