@@ -134,6 +134,83 @@ components:
         symbol: { type: string }
         verdict: { type: string, description: "BUY/SELL/HOLD or similar" }
 
+    # ==== NEW explicit schemas to fix builder errors ====
+    UpstoxLoginResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        url:
+          type: string
+          description: Redirect/authorize URL the client may open.
+          example: "https://api.upstox.com/login/authorize?client_id=...&redirect_uri=..."
+        method:
+          type: string
+          description: HTTP method to use for the URL (usually GET).
+          example: "GET"
+        state:
+          type: string
+          description: Opaque state value (if applicable).
+      required: [url]
+
+    UpstoxCallbackResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Authorization successful."
+        access_granted:
+          type: boolean
+          example: true
+
+    IndicatorsResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        symbol:
+          type: string
+          example: "RELIANCE.NS"
+        data_source_used:
+          type: string
+          example: "yfinance"
+        indicators:
+          type: object
+          additionalProperties: true
+          properties:
+            rsi: { type: number, nullable: true }
+            macd:
+              type: object
+              additionalProperties: true
+              properties:
+                macd: { type: number, nullable: true }
+                signal: { type: number, nullable: true }
+                hist: { type: number, nullable: true }
+            sma:
+              type: object
+              additionalProperties: true
+              properties:
+                sma50: { type: number, nullable: true }
+                sma100: { type: number, nullable: true }
+                sma150: { type: number, nullable: true }
+                sma200: { type: number, nullable: true }
+            bollinger:
+              type: object
+              additionalProperties: true
+              properties:
+                upper: { type: number, nullable: true }
+                middle: { type: number, nullable: true }
+                lower: { type: number, nullable: true }
+            roce: { type: number, nullable: true }
+        notes:
+          type: string
+          nullable: true
+          example: "Computed using latest daily candles."
+    # ==== /NEW ====
+
+
     BreakoutParams:
       type: object
       additionalProperties: false
@@ -283,8 +360,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/UpstoxLoginResponse'
 
   /oauth/upstox/callback:
     get:
@@ -297,8 +373,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/UpstoxCallbackResponse'
 
   /api/map:
     get:
@@ -419,8 +494,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/IndicatorsResponse'
 
   /api/fundamentals:
     get:
@@ -548,23 +622,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/BreakoutSignalReq'
-            example:
-              symbol: RELIANCE.NS
-              params:
-                data_source: auto
-                unit: days
-                interval: "1"
-                yf_period: 1y
-                level_method: donchian20
-                vol_avg_window: 20
-                vol_spike_min: 1.5
-                sustained_sessions: 2
-                sustained_min_ratio: 1.0
-                divergence_window: 5
-                pullback_window: 10
-                pullback_volume_ratio_max: 0.5
-                lookback_bars: 180
-                require_pattern: false
       responses:
         "200":
           description: Breakout detection result
@@ -587,18 +644,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/BreakoutsSymbolsReq'
-            example:
-              symbols: ["RELIANCE.NS","TCS.NS","INFY.NS"]
-              cursor: 0
-              params:
-                data_source: auto
-                unit: days
-                interval: "1"
-                yf_period: 1y
-                level_method: donchian20
-                vol_spike_min: 1.5
-                sustained_sessions: 2
-                pullback_volume_ratio_max: 0.5
       responses:
         "200":
           description: Result for the symbol at the given cursor
