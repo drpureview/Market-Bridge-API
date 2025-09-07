@@ -1,342 +1,29 @@
 openapi: 3.1.0
 info:
-  title: Market Bridge API
-  version: "1.0.0"
+  title: Upstox SellWatch API
+  version: "1.1.0"
   description: |
-    Bridge service for Upstox and yfinance market data, indicators, screeners,
-    and volume-confirmed breakout detection.
+    Bridge API for screening breakout-rally **end** conditions on Upstox holdings, plus index batch scans,
+    single-stock long-term strategies, and price-on-date backtests. 
+    - OAuth to Upstox: `/auth/start` → `/auth/callback`
+    - Holdings sell-watch: `/scan/holdings`
+    - Index scan (batch of N): `/scan/index`
+    - Single stock (4 strategies): `/scan/stock`
+    - Price on past date (backtest): `/price_on_date`
+    - Health: `/healthz`
+
+    **Batching guidance for GPT clients:**  
+    When scanning indices, call `/scan/index` with `batch_size` (default 10). If the response has `next_cursor`,
+    ask the user whether to continue and then call `/scan/index` again with that cursor. Repeat until `done=true`.
 
 servers:
   - url: https://upstox-api.onrender.com
-
-components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-
-  schemas:
-    Candle:
-      type: object
-      additionalProperties: false
-      properties:
-        t: { type: string, description: "Timestamp (ISO-8601 or exchange time)", example: "2025-09-04 10:00:00" }
-        o: { type: number, description: "Open" }
-        h: { type: number, description: "High" }
-        l: { type: number, description: "Low" }
-        c: { type: number, description: "Close" }
-        v: { type: number, description: "Volume" }
-      required: [t, o, h, l, c, v]
-
-    HistoricalResponse:
-      type: object
-      additionalProperties: false
-      properties:
-        symbol: { type: string }
-        candles:
-          type: array
-          items: { $ref: "#/components/schemas/Candle" }
-      required: [symbol, candles]
-
-    MapResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        symbol: { type: string }
-        instrument_key: { type: string }
-        exchange: { type: string }
-
-    LTPResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        data:
-          type: object
-          additionalProperties: true
-
-    FundamentalsResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        symbol: { type: string }
-        metrics:
-          type: object
-          additionalProperties: true
-      required: [symbol]
-
-    ConstituentsResponse:
-      type: object
-      additionalProperties: false
-      properties:
-        index: { type: string }
-        symbols:
-          type: array
-          items: { type: string }
-      required: [symbols]
-
-    UpdateConstituentsResponse:
-      type: object
-      additionalProperties: false
-      properties:
-        index: { type: string }
-        updated: { type: boolean }
-        count: { type: integer }
-
-    ListingsResponse:
-      type: object
-      additionalProperties: false
-      properties:
-        exchange: { type: string }
-        symbols:
-          type: array
-          items: { type: string }
-
-    ScreenIndicesRequest:
-      type: object
-      additionalProperties: true
-      properties:
-        indices:
-          type: array
-          items: { type: string }
-        strategies:
-          type: array
-          items: { type: string }
-        min_strategies_required: { type: integer, default: 2 }
-
-    ScreenIndicesResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        requested_indices:
-          type: array
-          items: { type: string }
-        results_count: { type: integer }
-        results:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-
-    SignalRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        symbol: { type: string }
-        strategies:
-          type: array
-          items: { type: string }
-      required: [symbol]
-
-    SignalResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        symbol: { type: string }
-        verdict: { type: string, description: "BUY/SELL/HOLD or similar" }
-
-    # ==== NEW explicit schemas to fix builder errors ====
-    UpstoxLoginResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        url:
-          type: string
-          description: Redirect/authorize URL the client may open.
-          example: "https://api.upstox.com/login/authorize?client_id=...&redirect_uri=..."
-        method:
-          type: string
-          description: HTTP method to use for the URL (usually GET).
-          example: "GET"
-        state:
-          type: string
-          description: Opaque state value (if applicable).
-      required: [url]
-
-    UpstoxCallbackResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        success:
-          type: boolean
-          example: true
-        message:
-          type: string
-          example: "Authorization successful."
-        access_granted:
-          type: boolean
-          example: true
-
-    IndicatorsResponse:
-      type: object
-      additionalProperties: true
-      properties:
-        symbol:
-          type: string
-          example: "RELIANCE.NS"
-        data_source_used:
-          type: string
-          example: "yfinance"
-        indicators:
-          type: object
-          additionalProperties: true
-          properties:
-            rsi: { type: number, nullable: true }
-            macd:
-              type: object
-              additionalProperties: true
-              properties:
-                macd: { type: number, nullable: true }
-                signal: { type: number, nullable: true }
-                hist: { type: number, nullable: true }
-            sma:
-              type: object
-              additionalProperties: true
-              properties:
-                sma50: { type: number, nullable: true }
-                sma100: { type: number, nullable: true }
-                sma150: { type: number, nullable: true }
-                sma200: { type: number, nullable: true }
-            bollinger:
-              type: object
-              additionalProperties: true
-              properties:
-                upper: { type: number, nullable: true }
-                middle: { type: number, nullable: true }
-                lower: { type: number, nullable: true }
-            roce: { type: number, nullable: true }
-        notes:
-          type: string
-          nullable: true
-          example: "Computed using latest daily candles."
-    # ==== /NEW ====
-
-
-    BreakoutParams:
-      type: object
-      additionalProperties: false
-      properties:
-        data_source:
-          type: string
-          enum: [auto, upstox, yfinance]
-          default: auto
-        unit:
-          type: string
-          enum: [days, weeks, months]
-          default: days
-        interval:
-          type: string
-          default: "1"
-        years:
-          type: integer
-          default: 2
-        yf_period:
-          type: string
-          default: "1y"
-        level_method:
-          type: string
-          enum: [donchian20, donchian55, hhv_52w]
-          default: donchian20
-        vol_avg_window:
-          type: integer
-          default: 20
-        vol_spike_min:
-          type: number
-          default: 1.5
-        sustained_sessions:
-          type: integer
-          default: 2
-        sustained_min_ratio:
-          type: number
-          default: 1.0
-        divergence_window:
-          type: integer
-          default: 5
-        pullback_window:
-          type: integer
-          default: 10
-        pullback_volume_ratio_max:
-          type: number
-          default: 0.5
-        lookback_bars:
-          type: integer
-          default: 180
-        require_pattern:
-          type: boolean
-          default: false
-
-    BreakoutHit:
-      type: object
-      additionalProperties: false
-      properties:
-        symbol: { type: string }
-        breakout_date: { type: string, nullable: true }
-        breakout_level: { type: number, nullable: true }
-        close_at_breakout: { type: number, nullable: true }
-        current_price: { type: number, nullable: true }
-        volume_at_breakout: { type: number, nullable: true }
-        avg20_volume: { type: number, nullable: true }
-        volume_ratio: { type: number, nullable: true }
-        sustained_ok: { type: boolean, nullable: true }
-        divergence_flag: { type: boolean, nullable: true }
-        candle_pattern: { type: string, nullable: true }
-        pullback_ok: { type: boolean, nullable: true }
-        score: { type: integer, default: 0 }
-        verdict:
-          type: string
-          enum: [CONFIRMED, WEAK, FAILED, NO_BREAKOUT, ERROR]
-        data_source_used: { type: string, nullable: true }
-        error: { type: string, nullable: true }
-      required: [symbol, verdict]
-
-    BreakoutSignalReq:
-      type: object
-      additionalProperties: false
-      properties:
-        symbol:
-          type: string
-          description: NSE/BSE ticker with suffix (e.g., RELIANCE.NS, TCS.NS)
-        params:
-          $ref: '#/components/schemas/BreakoutParams'
-      required: [symbol]
-
-    BreakoutSignalResp:
-      allOf:
-        - $ref: '#/components/schemas/BreakoutHit'
-
-    BreakoutsSymbolsReq:
-      type: object
-      additionalProperties: false
-      properties:
-        symbols:
-          type: array
-          description: Full list of symbols to scan. The server analyzes exactly one per call (cursor).
-          items: { type: string }
-        cursor:
-          type: integer
-          description: Index of the symbol to analyze in this request.
-          default: 0
-        params:
-          $ref: '#/components/schemas/BreakoutParams'
-      required: [symbols, cursor]
-
-    BreakoutsSymbolsResp:
-      type: object
-      additionalProperties: false
-      properties:
-        symbols_count: { type: integer }
-        cursor: { type: integer }
-        next_cursor: { type: integer, nullable: true }
-        done: { type: boolean }
-        analyzed_symbol: { type: string }
-        result:
-          $ref: '#/components/schemas/BreakoutHit'
-      required: [symbols_count, cursor, done, analyzed_symbol, result]
+    description: Render deployment
 
 paths:
-  /health:
+  /healthz:
     get:
-      operationId: health
-      tags: [System]
+      operationId: healthz
       summary: Health check
       responses:
         "200":
@@ -345,309 +32,329 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: false
                 properties:
-                  status: { type: string, example: ok }
+                  ok:
+                    type: boolean
+                    example: true
+                  time:
+                    type: string
+                    format: date-time
+                    example: "2025-09-08T08:45:12Z"
 
-  /oauth/upstox/login:
+  /auth/start:
     get:
-      operationId: oauth_upstox_login
-      tags: [OAuth]
-      summary: Start Upstox login
+      operationId: authStart
+      summary: Start Upstox OAuth flow
+      description: Redirects to Upstox login/consent using env client configuration.
       responses:
-        "200":
-          description: Login start info
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UpstoxLoginResponse'
+        "302":
+          description: Redirect to Upstox authorization dialog
 
-  /oauth/upstox/callback:
+  /auth/callback:
     get:
-      operationId: oauth_upstox_callback
-      tags: [OAuth]
-      summary: Upstox callback handler
-      responses:
-        "200":
-          description: Callback result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UpstoxCallbackResponse'
-
-  /api/map:
-    get:
-      operationId: map_symbol_to_instrument
-      tags: [Market]
-      summary: Map a symbol to Upstox instrument key
+      operationId: authCallback
+      summary: Upstox OAuth callback
       parameters:
         - in: query
-          name: symbol
+          name: code
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+          description: Authorization code returned by Upstox
       responses:
         "200":
-          description: Mapping result
+          description: Tokens captured in memory (and returned so you can persist to env if desired)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MapResponse'
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  tokens:
+                    type: object
+                    properties:
+                      access_token:
+                        type: boolean
+                        description: true if access token captured
+                        example: true
+                      refresh_token:
+                        type: boolean
+                        description: true if refresh token captured
+                        example: true
+        "400":
+          description: Bad request / token exchange failed
 
-  /api/ltp:
+  /scan/holdings:
     get:
-      operationId: ltp
-      tags: [Market]
-      summary: Get last traded price for instrument keys
-      parameters:
-        - in: query
-          name: instrument_keys
-          required: true
-          schema: { type: string }
+      operationId: scanHoldings
+      summary: Scan Upstox holdings for breakout-rally end
+      description: |
+        Pull holdings from Upstox, fetch OHLCV (Upstox → yfinance fallback automatically), 
+        evaluate end-of-breakout risk using RSI hot / near 52W high + (red day or 1D down or close<open or volume spike)
+        with confirmations (LH+LL or cross below EMA20). Returns only flagged results (**WATCH CLOSELY** / **STRONG EXIT**).
       responses:
         "200":
-          description: LTP result
+          description: Array of flagged holdings
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LTPResponse'
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScanResult'
 
-  /api/historical:
+  /scan/index:
     get:
-      operationId: historical_yfinance
-      tags: [Market]
-      summary: Historical candles via yfinance
-      parameters:
-        - in: query
-          name: symbol
-          required: true
-          schema: { type: string }
-        - in: query
-          name: period
-          required: false
-          schema: { type: string, default: 6mo }
-        - in: query
-          name: interval
-          required: false
-          schema: { type: string, default: 1d }
-      responses:
-        "200":
-          description: Historical candles
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HistoricalResponse'
-
-  /api/historical_upstox:
-    get:
-      operationId: historical_upstox
-      tags: [Market]
-      summary: Historical candles via Upstox
-      parameters:
-        - in: query
-          name: symbol
-          required: true
-          schema: { type: string }
-        - in: query
-          name: unit
-          required: false
-          schema: { type: string, enum: [days, weeks, months], default: days }
-        - in: query
-          name: interval
-          required: false
-          schema: { type: string, default: "1" }
-        - in: query
-          name: years
-          required: false
-          schema: { type: integer, default: 2 }
-        - in: query
-          name: to_date
-          required: false
-          schema: { type: string }
-      responses:
-        "200":
-          description: Historical candles
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HistoricalResponse'
-
-  /api/indicators:
-    post:
-      operationId: indicators
-      tags: [Analytics]
-      summary: Compute indicators like RSI/ROCE/SMA/MACD/Bollinger, etc.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-              properties:
-                symbol: { type: string }
-                candles:
-                  type: array
-                  items: { $ref: '#/components/schemas/Candle' }
-      responses:
-        "200":
-          description: Indicators result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IndicatorsResponse'
-
-  /api/fundamentals:
-    get:
-      operationId: fundamentals
-      tags: [Analytics]
-      summary: Fetch fundamental metrics for a symbol
-      parameters:
-        - in: query
-          name: symbol
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Fundamentals payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FundamentalsResponse'
-
-  /api/update_constituents:
-    post:
-      operationId: update_constituents
-      tags: [Universe]
-      summary: Update stored constituents for an index (server-side cache)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                index: { type: string }
-              required: [index]
-      responses:
-        "200":
-          description: Update status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UpdateConstituentsResponse'
-
-  /api/constituents:
-    get:
-      operationId: get_constituents
-      tags: [Universe]
-      summary: Get stored constituents for an index
+      operationId: scanIndex
+      summary: Scan an index in batches (no bulk)
+      description: |
+        Resolves members (NSE CSV → Wikipedia fallback), then processes `batch_size` tickers per call.
+        Returns `next_cursor` for the next page. Each row includes **current_price**, **stop_loss**, **target_price**, **trend**.
       parameters:
         - in: query
           name: index
+          required: true
+          description: Index name (e.g., NIFTY50, SENSEX, BANKNIFTY, NIFTY100)
+          schema:
+            type: string
+            example: NIFTY50
+        - in: query
+          name: cursor
           required: false
-          schema: { type: string }
+          description: Cursor token returned by previous call
+          schema:
+            type: string
+        - in: query
+          name: batch_size
+          required: false
+          description: Number of symbols to scan this call (1–15). Default 10.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 15
+            example: 10
+        - in: query
+          name: historical_date
+          required: false
+          description: Optional backtest date (YYYY-MM-DD). If provided, response includes `price_on_date`.
+          schema:
+            type: string
+            example: "2025-08-01"
       responses:
         "200":
-          description: Constituents
+          description: Batch results with optional next_cursor
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ConstituentsResponse'
-
-  /api/listings:
+                $ref: '#/components/schemas/IndexScanOut'
+  
+  /scan/stock:
     get:
-      operationId: get_listings
-      tags: [Universe]
-      summary: Get latest listings for an exchange (NSE/BSE)
+      operationId: scanStock
+      summary: Analyze a single symbol using 4 long-term strategies
+      description: |
+        Returns a **buy suggestion** plus **stop_loss** and **target_price** using:
+        1) Uptrend with 50>200  
+        2) Near 52W high  
+        3) RSI 55–70 **and** MACD line > signal  
+        4) EMA20 bounce (close crosses up EMA20)  
+        Requires at least ~50 daily candles (Upstox → yfinance fallback).
       parameters:
         - in: query
-          name: exchange
-          required: false
-          schema: { type: string, enum: [NSE_EQ, BSE_EQ] }
+          name: symbol
+          required: true
+          schema:
+            type: string
+            example: RELIANCE
       responses:
         "200":
-          description: Listings
+          description: Strategy decision and levels
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListingsResponse'
+                $ref: '#/components/schemas/StrategyOut'
+        "404":
+          description: No OHLCV data for symbol
 
-  /api/screen_indices:
-    post:
-      operationId: screen_indices
-      tags: [Screeners]
-      summary: Screen indices by strategies (server-side)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ScreenIndicesRequest'
+  /price_on_date:
+    get:
+      operationId: priceOnDate
+      summary: Close price on a specific historical date (backtest utility)
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema:
+            type: string
+            example: TCS
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            description: YYYY-MM-DD
+            example: "2024-08-01"
       responses:
         "200":
-          description: Screener results
+          description: Price on date
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ScreenIndicesResponse'
+                $ref: '#/components/schemas/PriceOnDateOut'
+        "404":
+          description: Not found / no candle for date
 
-  /api/signal:
-    post:
-      operationId: strategy_signal
-      tags: [Screeners]
-      summary: Get buy/sell/hold signal for a single symbol
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SignalRequest'
-      responses:
-        "200":
-          description: Signal result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SignalResponse'
+components:
+  schemas:
+    ScanResult:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: RELIANCE
+        qty:
+          type: number
+          nullable: true
+          example: 25
+        flagged:
+          type: boolean
+          example: true
+        confirm:
+          type: boolean
+          example: true
+        label:
+          type: string
+          enum: [STRONG EXIT, WATCH CLOSELY, HOLD, DATA_UNAVAILABLE]
+          example: STRONG EXIT
+        metrics:
+          type: object
+          description: Detailed signal metrics from the last two sessions
+          properties:
+            rsi_d0:
+              type: number
+              example: 68.2
+            near_high:
+              type: boolean
+              example: true
+            ret1d_pct:
+              type: number
+              example: -2.15
+            vol_spike_d0:
+              type: boolean
+              example: true
+            red_candle_d1:
+              type: boolean
+              example: true
+            lower_high:
+              type: boolean
+              example: true
+            lower_low:
+              type: boolean
+              example: true
+            cross_ema20:
+              type: boolean
+              example: false
+            high_52w:
+              type: number
+              example: 2850.0
+            close_d0:
+              type: number
+              example: 2795.5
+            close_d1:
+              type: number
+              example: 2735.2
 
-  /api/breakout_signal:
-    post:
-      operationId: breakout_signal
-      tags: [Breakouts]
-      summary: Detect breakout for a single symbol (volume-confirmed)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BreakoutSignalReq'
-      responses:
-        "200":
-          description: Breakout detection result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BreakoutSignalResp'
+    IndexRow:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: HDFCBANK.NS
+        current_price:
+          type: number
+          example: 1650.50
+        stop_loss:
+          type: number
+          example: 1588.20
+        target_price:
+          type: number
+          example: 1810.75
+        trend:
+          type: string
+          example: Uptrend
+        price_on_date:
+          type: number
+          nullable: true
+          description: Present only if historical_date query param supplied and matched a candle
 
-  /api/breakouts_symbols_one:
-    post:
-      operationId: breakouts_symbols_one
-      tags: [Breakouts]
-      summary: Scan a list of symbols one-at-a-time (cursor-based)
-      description: >
-        The server analyzes exactly one symbol per request (`cursor`).
-        Client should call repeatedly, incrementing cursor until `done: true`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BreakoutsSymbolsReq'
-      responses:
-        "200":
-          description: Result for the symbol at the given cursor
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BreakoutsSymbolsResp'
+    IndexScanOut:
+      type: object
+      properties:
+        index:
+          type: string
+          example: NIFTY50
+        processed:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          example: 50
+        batch:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexRow'
+        next_cursor:
+          type: string
+          nullable: true
+          description: Call `/scan/index` again with this cursor to fetch the next batch
+        done:
+          type: boolean
+          example: false
+
+    StrategyOut:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: TCS
+        date:
+          type: string
+          example: "2025-09-08"
+        current_price:
+          type: number
+          example: 4200.25
+        buy_signal:
+          type: boolean
+          example: true
+        strategies_hit:
+          type: array
+          items:
+            type: string
+          example:
+            - Uptrend_50>200
+            - Near_52w_High
+            - RSI_55_70_MACD_Bullish
+        stop_loss:
+          type: number
+          example: 3990.0
+        target_price:
+          type: number
+          example: 4830.0
+
+    PriceOnDateOut:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: INFY
+        date:
+          type: string
+          example: "2024-08-01"
+        close:
+          type: number
+          nullable: true
+          example: 1585.20
+        found:
+          type: boolean
+          example: true
