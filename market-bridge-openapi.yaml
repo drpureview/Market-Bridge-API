@@ -1,20 +1,10 @@
 openapi: 3.1.0
 info:
   title: Upstox SellWatch API
-  version: "1.1.0"
-  description: |
-    Bridge API for screening breakout-rally **end** conditions on Upstox holdings, plus index batch scans,
-    single-stock long-term strategies, and price-on-date backtests. 
-    - OAuth to Upstox: `/auth/start` → `/auth/callback`
-    - Holdings sell-watch: `/scan/holdings`
-    - Index scan (batch of N): `/scan/index`
-    - Single stock (4 strategies): `/scan/stock`
-    - Price on past date (backtest): `/price_on_date`
-    - Health: `/healthz`
-
-    **Batching guidance for GPT clients:**  
-    When scanning indices, call `/scan/index` with `batch_size` (default 10). If the response has `next_cursor`,
-    ask the user whether to continue and then call `/scan/index` again with that cursor. Repeat until `done=true`.
+  version: "1.1.1"
+  description: >
+    Bridge API for Upstox holdings “breakout-end” scans, index batch scans, single-stock strategies,
+    and price-on-date backtests. OAuth via /auth/start -> /auth/callback.
 
 servers:
   - url: https://upstox-api.onrender.com
@@ -25,78 +15,45 @@ paths:
     get:
       operationId: healthz
       summary: Health check
+      description: Returns service status and time.
       responses:
         "200":
           description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                    example: true
-                  time:
-                    type: string
-                    format: date-time
-                    example: "2025-09-08T08:45:12Z"
 
   /auth/start:
     get:
       operationId: authStart
-      summary: Start Upstox OAuth flow
-      description: Redirects to Upstox login/consent using env client configuration.
+      summary: Start Upstox OAuth
+      description: Redirects to Upstox authorization dialog using env client settings.
       responses:
         "302":
-          description: Redirect to Upstox authorization dialog
+          description: Redirect
 
   /auth/callback:
     get:
       operationId: authCallback
       summary: Upstox OAuth callback
+      description: Exchanges code for tokens and stores them in memory.
       parameters:
         - in: query
           name: code
           required: true
-          schema:
-            type: string
-          description: Authorization code returned by Upstox
+          schema: { type: string }
       responses:
         "200":
-          description: Tokens captured in memory (and returned so you can persist to env if desired)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                    example: true
-                  tokens:
-                    type: object
-                    properties:
-                      access_token:
-                        type: boolean
-                        description: true if access token captured
-                        example: true
-                      refresh_token:
-                        type: boolean
-                        description: true if refresh token captured
-                        example: true
-        "400":
-          description: Bad request / token exchange failed
+          description: Tokens captured
 
   /scan/holdings:
     get:
       operationId: scanHoldings
-      summary: Scan Upstox holdings for breakout-rally end
-      description: |
-        Pull holdings from Upstox, fetch OHLCV (Upstox → yfinance fallback automatically), 
-        evaluate end-of-breakout risk using RSI hot / near 52W high + (red day or 1D down or close<open or volume spike)
-        with confirmations (LH+LL or cross below EMA20). Returns only flagged results (**WATCH CLOSELY** / **STRONG EXIT**).
+      summary: Scan holdings for breakout-end
+      description: >
+        Pulls Upstox holdings, fetches OHLCV (Upstox → yfinance fallback), evaluates breakout-end
+        (RSI/near 52W high + red day or ≤0% return or close<open or volume spike) with confirmation
+        (lower-high+lower-low or EMA20 cross). Returns only flagged rows.
       responses:
         "200":
-          description: Array of flagged holdings
+          description: Flagged holdings
           content:
             application/json:
               schema:
@@ -107,103 +64,80 @@ paths:
   /scan/index:
     get:
       operationId: scanIndex
-      summary: Scan an index in batches (no bulk)
-      description: |
-        Resolves members (NSE CSV → Wikipedia fallback), then processes `batch_size` tickers per call.
-        Returns `next_cursor` for the next page. Each row includes **current_price**, **stop_loss**, **target_price**, **trend**.
+      summary: Scan an index in batches
+      description: >
+        Resolves index members (NSE CSV → Wikipedia fallback) and scans batch_size tickers per call.
+        Returns next_cursor for the next batch. Each row has price, stop loss, target, trend.
       parameters:
         - in: query
           name: index
           required: true
-          description: Index name (e.g., NIFTY50, SENSEX, BANKNIFTY, NIFTY100)
-          schema:
-            type: string
-            example: NIFTY50
+          schema: { type: string, example: NIFTY50 }
         - in: query
           name: cursor
           required: false
-          description: Cursor token returned by previous call
-          schema:
-            type: string
+          schema: { type: string }
         - in: query
           name: batch_size
           required: false
-          description: Number of symbols to scan this call (1–15). Default 10.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 15
-            example: 10
+          schema: { type: integer, minimum: 1, maximum: 15, example: 10 }
         - in: query
           name: historical_date
           required: false
-          description: Optional backtest date (YYYY-MM-DD). If provided, response includes `price_on_date`.
-          schema:
-            type: string
-            example: "2025-08-01"
+          schema: { type: string, example: "2025-08-01" }
       responses:
         "200":
-          description: Batch results with optional next_cursor
+          description: Batch results
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/IndexScanOut'
-  
+
   /scan/stock:
     get:
       operationId: scanStock
-      summary: Analyze a single symbol using 4 long-term strategies
-      description: |
-        Returns a **buy suggestion** plus **stop_loss** and **target_price** using:
-        1) Uptrend with 50>200  
-        2) Near 52W high  
-        3) RSI 55–70 **and** MACD line > signal  
-        4) EMA20 bounce (close crosses up EMA20)  
-        Requires at least ~50 daily candles (Upstox → yfinance fallback).
+      summary: Single-stock long-term strategies
+      description: >
+        Analyzes a symbol using four technical strategies (MA stack, near 52W high, RSI+MACD, EMA20 bounce)
+        and returns buy suggestion with stop/target.
       parameters:
         - in: query
           name: symbol
           required: true
-          schema:
-            type: string
-            example: RELIANCE
+          schema: { type: string, example: RELIANCE }
       responses:
         "200":
-          description: Strategy decision and levels
+          description: Strategy decision
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/StrategyOut'
         "404":
-          description: No OHLCV data for symbol
+          description: No OHLCV data
 
   /price_on_date:
     get:
       operationId: priceOnDate
-      summary: Close price on a specific historical date (backtest utility)
+      summary: Close on historical date
+      description: Returns the close price for the symbol on the given date (if available).
       parameters:
         - in: query
           name: symbol
           required: true
-          schema:
-            type: string
-            example: TCS
+          schema: { type: string, example: TCS }
         - in: query
           name: date
           required: true
-          schema:
-            type: string
-            description: YYYY-MM-DD
-            example: "2024-08-01"
+          schema: { type: string, example: "2024-08-01" }
       responses:
         "200":
-          description: Price on date
+          description: Price result
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PriceOnDateOut'
         "404":
-          description: Not found / no candle for date
+          description: Not found
 
 components:
   schemas:
@@ -229,132 +163,65 @@ components:
           example: STRONG EXIT
         metrics:
           type: object
-          description: Detailed signal metrics from the last two sessions
           properties:
-            rsi_d0:
-              type: number
-              example: 68.2
-            near_high:
-              type: boolean
-              example: true
-            ret1d_pct:
-              type: number
-              example: -2.15
-            vol_spike_d0:
-              type: boolean
-              example: true
-            red_candle_d1:
-              type: boolean
-              example: true
-            lower_high:
-              type: boolean
-              example: true
-            lower_low:
-              type: boolean
-              example: true
-            cross_ema20:
-              type: boolean
-              example: false
-            high_52w:
-              type: number
-              example: 2850.0
-            close_d0:
-              type: number
-              example: 2795.5
-            close_d1:
-              type: number
-              example: 2735.2
+            rsi_d0: { type: number, example: 68.2 }
+            near_high: { type: boolean, example: true }
+            ret1d_pct: { type: number, example: -2.15 }
+            vol_spike_d0: { type: boolean, example: true }
+            red_candle_d1: { type: boolean, example: true }
+            lower_high: { type: boolean, example: true }
+            lower_low: { type: boolean, example: true }
+            cross_ema20: { type: boolean, example: false }
+            high_52w: { type: number, example: 2850.0 }
+            close_d0: { type: number, example: 2795.5 }
+            close_d1: { type: number, example: 2735.2 }
 
     IndexRow:
       type: object
       properties:
-        symbol:
-          type: string
-          example: HDFCBANK.NS
-        current_price:
-          type: number
-          example: 1650.50
-        stop_loss:
-          type: number
-          example: 1588.20
-        target_price:
-          type: number
-          example: 1810.75
-        trend:
-          type: string
-          example: Uptrend
+        symbol: { type: string, example: HDFCBANK.NS }
+        current_price: { type: number, example: 1650.50 }
+        stop_loss: { type: number, example: 1588.20 }
+        target_price: { type: number, example: 1810.75 }
+        trend: { type: string, example: Uptrend }
         price_on_date:
           type: number
           nullable: true
-          description: Present only if historical_date query param supplied and matched a candle
+          description: Present only if historical_date was supplied and matched a candle
 
     IndexScanOut:
       type: object
       properties:
-        index:
-          type: string
-          example: NIFTY50
-        processed:
-          type: integer
-          example: 10
-        total:
-          type: integer
-          example: 50
+        index: { type: string, example: NIFTY50 }
+        processed: { type: integer, example: 10 }
+        total: { type: integer, example: 50 }
         batch:
           type: array
-          items:
-            $ref: '#/components/schemas/IndexRow'
+          items: { $ref: '#/components/schemas/IndexRow' }
         next_cursor:
           type: string
           nullable: true
-          description: Call `/scan/index` again with this cursor to fetch the next batch
-        done:
-          type: boolean
-          example: false
+          description: Pass this token to /scan/index to continue
+        done: { type: boolean, example: false }
 
     StrategyOut:
       type: object
       properties:
-        symbol:
-          type: string
-          example: TCS
-        date:
-          type: string
-          example: "2025-09-08"
-        current_price:
-          type: number
-          example: 4200.25
-        buy_signal:
-          type: boolean
-          example: true
+        symbol: { type: string, example: TCS }
+        date: { type: string, example: "2025-09-08" }
+        current_price: { type: number, example: 4200.25 }
+        buy_signal: { type: boolean, example: true }
         strategies_hit:
           type: array
-          items:
-            type: string
-          example:
-            - Uptrend_50>200
-            - Near_52w_High
-            - RSI_55_70_MACD_Bullish
-        stop_loss:
-          type: number
-          example: 3990.0
-        target_price:
-          type: number
-          example: 4830.0
+          items: { type: string }
+          example: ["Uptrend_50>200", "Near_52w_High", "RSI_55_70_MACD_Bullish"]
+        stop_loss: { type: number, example: 3990.0 }
+        target_price: { type: number, example: 4830.0 }
 
     PriceOnDateOut:
       type: object
       properties:
-        symbol:
-          type: string
-          example: INFY
-        date:
-          type: string
-          example: "2024-08-01"
-        close:
-          type: number
-          nullable: true
-          example: 1585.20
-        found:
-          type: boolean
-          example: true
+        symbol: { type: string, example: INFY }
+        date: { type: string, example: "2024-08-01" }
+        close: { type: number, nullable: true, example: 1585.20 }
+        found: { type: boolean, example: true }
