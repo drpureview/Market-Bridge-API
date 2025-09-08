@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: Upstox SellWatch API
-  version: "1.1.1"
+  version: "1.2.0"
   description: >
-    Bridge API for Upstox holdings “breakout-end” scans, index batch scans, single-stock strategies,
-    and price-on-date backtests. OAuth via /auth/start -> /auth/callback.
+    Bridge API for breakout-end scans on holdings, watchlists, and single symbols,
+    plus index batching, long-term strategies, and price-on-date lookups.
 
 servers:
   - url: https://upstox-api.onrender.com
@@ -43,14 +43,38 @@ paths:
         "200":
           description: Tokens captured
 
+  # --- Legacy aliases (so older GPT links still work) ---
+  /oauth/upstox/login:
+    get:
+      operationId: legacyLogin
+      summary: Legacy OAuth start
+      description: Legacy path that redirects to Upstox authorization dialog.
+      responses:
+        "302":
+          description: Redirect
+
+  /oauth/upstox/callback:
+    get:
+      operationId: legacyCallback
+      summary: Legacy OAuth callback
+      description: Legacy path that exchanges code for tokens.
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Tokens captured
+
   /scan/holdings:
     get:
       operationId: scanHoldings
       summary: Scan holdings for breakout-end
       description: >
-        Pulls Upstox holdings, fetches OHLCV (Upstox → yfinance fallback), evaluates breakout-end
-        (RSI/near 52W high + red day or ≤0% return or close<open or volume spike) with confirmation
-        (lower-high+lower-low or EMA20 cross). Returns only flagged rows.
+        Pulls Upstox holdings, fetches OHLCV (Upstox→yfinance fallback), evaluates breakout-end
+        (RSI/near 52W high + red/≤0%/close<open/vol spike) with confirmation (LH+LL or EMA20 cross).
+        Returns flagged rows only.
       responses:
         "200":
           description: Flagged holdings
@@ -61,13 +85,64 @@ paths:
                 items:
                   $ref: '#/components/schemas/ScanResult'
 
+  /scan/watchlist:
+    post:
+      operationId: scanWatchlist
+      summary: Scan a custom watchlist
+      description: >
+        Evaluates breakout-end on provided tickers. Uses Upstox if available, else yfinance.
+        Returns flagged rows only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tickers:
+                  type: array
+                  items: { type: string }
+              required: [tickers]
+              example:
+                tickers: ["RELIANCE", "TCS", "INFY"]
+      responses:
+        "200":
+          description: Flagged watchlist results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScanResult'
+
+  /scan/exit:
+    get:
+      operationId: scanExit
+      summary: Single-symbol breakout-end
+      description: >
+        Checks one symbol for breakout-end. Uses Upstox if available, else yfinance.
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema: { type: string, example: RELIANCE }
+      responses:
+        "200":
+          description: Exit signal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExitSingleOut'
+        "404":
+          description: No data / insufficient history
+
   /scan/index:
     get:
       operationId: scanIndex
       summary: Scan an index in batches
       description: >
-        Resolves index members (NSE CSV → Wikipedia fallback) and scans batch_size tickers per call.
-        Returns next_cursor for the next batch. Each row has price, stop loss, target, trend.
+        Resolves index members (NSE CSV→Wikipedia fallback) and scans batch_size per call.
+        Returns next_cursor for the next batch. Each row has price, stop, target, trend.
       parameters:
         - in: query
           name: index
@@ -98,8 +173,8 @@ paths:
       operationId: scanStock
       summary: Single-stock long-term strategies
       description: >
-        Analyzes a symbol using four technical strategies (MA stack, near 52W high, RSI+MACD, EMA20 bounce)
-        and returns buy suggestion with stop/target.
+        Analyzes a symbol via 4 strategies (MA stack, near 52W high, RSI+MACD, EMA20 bounce).
+        Returns buy suggestion with stop/target.
       parameters:
         - in: query
           name: symbol
@@ -175,6 +250,21 @@ components:
             high_52w: { type: number, example: 2850.0 }
             close_d0: { type: number, example: 2795.5 }
             close_d1: { type: number, example: 2735.2 }
+
+    ExitSingleOut:
+      type: object
+      properties:
+        symbol: { type: string, example: RELIANCE }
+        as_of: { type: string, example: "2025-09-08" }
+        current_price: { type: number, example: 2745.20 }
+        flagged: { type: boolean, example: true }
+        confirm: { type: boolean, example: false }
+        label:
+          type: string
+          enum: [STRONG EXIT, WATCH CLOSELY, HOLD]
+          example: WATCH CLOSELY
+        metrics:
+          $ref: '#/components/schemas/ScanResult/properties/metrics'
 
     IndexRow:
       type: object
