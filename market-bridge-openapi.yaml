@@ -1,314 +1,498 @@
 openapi: 3.1.0
 info:
-  title: Upstox SellWatch API
-  version: "1.2.1"
-  description: >
-    Breakout-end scans for holdings, watchlists, and single symbols; index batching; long-term strategies;
-    price-on-date. OAuth via /auth/start → /auth/callback. Legacy OAuth routes included.
-
+  title: Market Bridge API
+  version: "2.0.0"
+  description: |
+    YFinance-first market analysis with Upstox as fallback and for holdings.
+    - Random stock analysis and index scans do **not** require Upstox login.
+    - Upstox OAuth is available for holdings and optional price/history fallback.
 servers:
-  - url: https://upstox-api.onrender.com
-    description: Render deployment
-
+  - url: https://your-render-app.onrender.com
 paths:
-  /healthz:
+  /health:
     get:
-      operationId: healthz
+      operationId: healthCheck
       summary: Health check
-      description: Returns service status and time.
       responses:
         "200":
           description: OK
-
-  /auth/start:
-    get:
-      operationId: authStart
-      summary: Start Upstox OAuth
-      description: Redirects to Upstox authorization dialog using env client settings.
-      responses:
-        "302":
-          description: Redirect
-
-  /auth/callback:
-    get:
-      operationId: authCallback
-      summary: Upstox OAuth callback
-      description: Exchanges code for tokens and stores them in memory.
-      parameters:
-        - in: query
-          name: code
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Tokens captured
-
-  /oauth/upstox/login:
-    get:
-      operationId: legacyLogin
-      summary: Legacy OAuth start
-      description: Legacy path that redirects to Upstox authorization dialog.
-      responses:
-        "302":
-          description: Redirect
-
-  /oauth/upstox/callback:
-    get:
-      operationId: legacyCallback
-      summary: Legacy OAuth callback
-      description: Legacy path that exchanges code for tokens.
-      parameters:
-        - in: query
-          name: code
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Tokens captured
-
-  /scan/holdings:
-    get:
-      operationId: scanHoldings
-      summary: Scan holdings for breakout-end
-      description: >
-        Pulls holdings, fetches OHLCV (Upstox→yfinance fallback), evaluates breakout-end with confirmations.
-        Returns flagged rows only.
-      responses:
-        "200":
-          description: Flagged holdings
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ScanResult'
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  ts:
+                    type: number
 
-  /scan/watchlist:
+  /oauth/upstox/login:
+    get:
+      operationId: upstoxLogin
+      summary: Start Upstox OAuth (manual link open)
+      parameters:
+        - in: query
+          name: user_key
+          required: true
+          schema:
+            type: string
+          description: Arbitrary user/session ID used to store the bearer token server-side.
+      responses:
+        "302":
+          description: Redirects to Upstox authorization dialog.
+
+  /oauth/upstox/callback:
+    get:
+      operationId: upstoxCallback
+      summary: Upstox OAuth callback
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: state
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success or error HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/map:
+    get:
+      operationId: mapSymbol
+      summary: Map a Yahoo symbol to Upstox instrument info (best-effort)
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema:
+            type: string
+          description: Yahoo symbol (e.g., RELIANCE.NS)
+      responses:
+        "200":
+          description: Mapping result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol: { type: string }
+                  found: { type: boolean }
+                  message: { type: string }
+                  trading_symbol: { type: string }
+                  instrument_key: { type: string }
+                  segment: { type: string }
+                  exchange: { type: string }
+                  short_name: { type: string }
+
+  /api/historical:
+    get:
+      operationId: getHistorical
+      summary: Historical OHLCV (yfinance primary; Yahoo chart API fallback)
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema: { type: string }
+        - in: query
+          name: period
+          required: false
+          schema: { type: string, default: 6mo }
+          description: e.g., 6mo, 1y, 5y
+        - in: query
+          name: interval
+          required: false
+          schema: { type: string, default: 1d }
+          description: e.g., 1d, 1wk
+      responses:
+        "200":
+          description: OHLCV candles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol: { type: string }
+                  candles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        t: { type: string, description: ISO datetime }
+                        o: { type: number }
+                        h: { type: number }
+                        l: { type: number }
+                        c: { type: number }
+                        v: { type: number }
+
+  /api/constituents:
+    get:
+      operationId: getIndexConstituents
+      summary: Get index constituents (NSE CSV preferred; Wikipedia fallback)
+      parameters:
+        - in: query
+          name: index
+          required: true
+          schema: { type: string }
+          description: e.g., NIFTY 50, NIFTY BANK, SENSEX
+      responses:
+        "200":
+          description: Constituents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  index: { type: string }
+                  found: { type: boolean }
+                  count: { type: integer }
+                  constituents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        symbol: { type: string }
+                        company: { type: string }
+
+  /api/update_constituents:
     post:
-      operationId: scanWatchlist
-      summary: Scan a custom watchlist
-      description: Evaluates breakout-end on provided tickers. Uses Upstox if available, else yfinance.
+      operationId: refreshIndexConstituents
+      summary: Force refresh constituents for an index
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [tickers]
+              required: [index]
               properties:
-                tickers:
-                  type: array
-                  items: { type: string }
-              example:
-                tickers: ["RELIANCE", "TCS", "INFY"]
+                index:
+                  type: string
+                  description: Index name (e.g., NIFTY 50)
       responses:
         "200":
-          description: Flagged watchlist results
+          description: Refresh result
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ScanResult'
+                type: object
+                properties:
+                  index: { type: string }
+                  source: { type: string }
+                  count: { type: integer }
+                  file: { type: string }
+                  message: { type: string }
 
-  /scan/exit:
+  /api/ltp:
     get:
-      operationId: scanExit
-      summary: Single-symbol breakout-end
-      description: Checks one symbol for breakout-end. Uses Upstox if available, else yfinance.
+      operationId: getLtpUpstox
+      summary: LTP via Upstox (requires OAuth or static bearer)
       parameters:
         - in: query
-          name: symbol
+          name: instrument_keys
           required: true
-          schema: { type: string, example: RELIANCE }
-      responses:
-        "200":
-          description: Exit signal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExitSingleOut'
-        "404":
-          description: No data / insufficient history
-
-  /scan/index:
-    get:
-      operationId: scanIndex
-      summary: Scan an index in batches
-      description: >
-        Resolves index members (NSE CSV→Wikipedia fallback) and scans batch_size per call.
-        Returns next_cursor. Each row has price, stop, target, trend.
-      parameters:
+          schema: { type: string }
+          description: Comma-separated Upstox instrument keys.
         - in: query
-          name: index
-          required: true
-          schema: { type: string, example: NIFTY50 }
-        - in: query
-          name: cursor
+          name: user_key
           required: false
           schema: { type: string }
-        - in: query
-          name: batch_size
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 15, example: 10 }
-        - in: query
-          name: historical_date
-          required: false
-          schema: { type: string, example: "2025-08-01" }
+          description: The user_key used at OAuth login; optional if using UPSTOX_STATIC_BEARER.
       responses:
         "200":
-          description: Batch results
+          description: Upstox LTP payload (pass-through)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/IndexScanOut'
+                type: object
 
-  /scan/stock:
+  /api/fundamentals:
     get:
-      operationId: scanStock
-      summary: Single-stock long-term strategies
-      description: >
-        Four strategies (MA stack, near 52W high, RSI+MACD, EMA20 bounce). Returns buy suggestion with stop/target.
+      operationId: getFundamentals
+      summary: Basic fundamentals from yfinance
       parameters:
         - in: query
           name: symbol
           required: true
-          schema: { type: string, example: RELIANCE }
+          schema: { type: string }
       responses:
         "200":
-          description: Strategy decision
+          description: Fundamentals
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StrategyOut'
-        "404":
-          description: No OHLCV data
+                type: object
+                properties:
+                  symbol: { type: string }
+                  PE: { type: number, nullable: true }
+                  PB: { type: number, nullable: true }
+                  MarketCap: { type: number, nullable: true }
 
-  /price_on_date:
+  /api/analyze_stock:
+    post:
+      operationId: analyzeStock
+      summary: Analyze a stock for Buy signal and/or Breakout Rally Ending (BRE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeReq'
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol: { type: string }
+                  as_of: { type: string }
+                  buy_signal:
+                    type: object
+                    nullable: true
+                    properties:
+                      per_strategy:
+                        type: object
+                        additionalProperties: true
+                      combined:
+                        type: string
+                        description: BUY, SELL, MIXED
+                      current_price:
+                        type: number
+                        nullable: true
+                      price_on_date:
+                        type: number
+                        nullable: true
+                      stop_loss:
+                        type: number
+                        nullable: true
+                      target:
+                        type: number
+                        nullable: true
+                  breakout_end:
+                    $ref: '#/components/schemas/BreakoutEndHit'
+                  debug:
+                    type: object
+                    properties:
+                      ema_fast: { type: number, nullable: true }
+                      rsi14: { type: number, nullable: true }
+                      macd_hist_last: { type: number, nullable: true }
+                      vol_avg20: { type: number, nullable: true }
+
+  /api/screen_indices_one:
+    post:
+      operationId: screenIndicesOne
+      summary: Run 4 long-term strategies on ONE symbol at a time (for batching in GPT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreenOneReq'
+      responses:
+        "200":
+          description: One-symbol screening result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenOneResp'
+
+  /api/holdings_list:
     get:
-      operationId: priceOnDate
-      summary: Close on historical date
-      description: Returns the close price for the symbol on the given date (if available).
+      operationId: getHoldingsList
+      summary: Get Upstox holdings (normalized to YF tickers)
       parameters:
         - in: query
-          name: symbol
-          required: true
-          schema: { type: string, example: TCS }
-        - in: query
-          name: date
-          required: true
-          schema: { type: string, example: "2024-08-01" }
+          name: user_key
+          required: false
+          schema: { type: string }
+          description: The user_key used at OAuth login; optional if using UPSTOX_STATIC_BEARER.
       responses:
         "200":
-          description: Price result
+          description: Symbols list
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PriceOnDateOut'
-        "404":
-          description: Not found
+                type: object
+                properties:
+                  count: { type: integer }
+                  symbols:
+                    type: array
+                    items: { type: string }
+                  raw:
+                    type: array
+                    items:
+                      type: object
+
+  /api/holdings_breakout_end_one:
+    post:
+      operationId: holdingsBreakoutEndOne
+      summary: Check Breakout Rally Ending (BRE) for ONE holding at a time (cursor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HoldingsBREOneReq'
+      responses:
+        "200":
+          description: One holding BRE result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldingsBREOneResp'
 
 components:
   schemas:
-    Metrics:
+    AnalyzeReq:
       type: object
-      properties:
-        rsi_d0: { type: number, example: 68.2 }
-        near_high: { type: boolean, example: true }
-        ret1d_pct: { type: number, example: -2.15 }
-        vol_spike_d0: { type: boolean, example: true }
-        red_candle_d1: { type: boolean, example: true }
-        lower_high: { type: boolean, example: true }
-        lower_low: { type: boolean, example: true }
-        cross_ema20: { type: boolean, example: false }
-        high_52w: { type: number, example: 2850.0 }
-        close_d0: { type: number, example: 2795.5 }
-        close_d1: { type: number, example: 2735.2 }
-
-    ScanResult:
-      type: object
+      required: [symbol]
       properties:
         symbol:
           type: string
-          example: RELIANCE
-        qty:
+          description: Yahoo symbol (e.g., TCS.NS)
+        mode:
+          type: string
+          enum: [both, buy, breakout_end]
+          default: both
+        historical_date:
+          type: string
+          nullable: true
+          description: YYYY-MM-DD for backtesting (returns price_on_date)
+        balance:
+          type: number
+          default: 100000
+        prefer_upstox:
+          type: boolean
+          default: false
+        user_key:
+          type: string
+          nullable: true
+          description: Required only if prefer_upstox=true and using OAuth (or set UPSTOX_STATIC_BEARER)
+
+    BreakoutEndHit:
+      type: object
+      properties:
+        symbol: { type: string }
+        as_of: { type: string }
+        current_price:
           type: number
           nullable: true
-          example: 25
-        flagged:
+        bearish_candle:
           type: boolean
-          example: true
-        confirm:
+          description: Close < Open
+        below_ema_fast:
           type: boolean
-          example: true
-        label:
+        rsi_below_50:
+          type: boolean
+        macd_hist_falling:
+          type: boolean
+        volume_distribution:
+          type: boolean
+          description: Down day with volume spike vs 20SMA
+        score:
+          type: integer
+          description: Sum of triggered conditions (0-5)
+        verdict:
           type: string
-          enum: ["STRONG EXIT", "WATCH CLOSELY", "HOLD", "DATA_UNAVAILABLE"]
-          example: "STRONG EXIT"
-        metrics:
-          $ref: '#/components/schemas/Metrics'
+          enum: [LIKELY_END, WATCH, OK]
 
-    ExitSingleOut:
+    ScreenOneReq:
       type: object
       properties:
-        symbol: { type: string, example: RELIANCE }
-        as_of: { type: string, example: "2025-09-08" }
-        current_price: { type: number, example: 2745.20 }
-        flagged: { type: boolean, example: true }
-        confirm: { type: boolean, example: false }
-        label:
+        index:
           type: string
-          enum: ["STRONG EXIT", "WATCH CLOSELY", "HOLD"]
-          example: "WATCH CLOSELY"
-        metrics:
-          $ref: '#/components/schemas/Metrics'
+          nullable: true
+          description: e.g., NIFTY 50, BANK NIFTY, SENSEX
+        symbols:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: Use explicit symbols instead of index
+        cursor:
+          type: integer
+          default: 0
+          description: Position within the resolved symbols list
+        historical_date:
+          type: string
+          nullable: true
+          description: YYYY-MM-DD for backtesting (returns price_on_date)
+        balance:
+          type: number
+          default: 100000
+        prefer_upstox:
+          type: boolean
+          default: false
+        user_key:
+          type: string
+          nullable: true
 
-    IndexRow:
+    ScreenOneResp:
       type: object
       properties:
-        symbol: { type: string, example: HDFCBANK.NS }
-        current_price: { type: number, example: 1650.50 }
-        stop_loss: { type: number, example: 1588.20 }
-        target_price: { type: number, example: 1810.75 }
-        trend: { type: string, example: Uptrend }
+        symbols_count: { type: integer }
+        cursor: { type: integer }
+        next_cursor:
+          type: integer
+          nullable: true
+        done:
+          type: boolean
+        analyzed_symbol: { type: string }
+        current_price:
+          type: number
+          nullable: true
         price_on_date:
           type: number
           nullable: true
-          description: Present only if historical_date was supplied and matched a candle
+        stop_loss:
+          type: number
+          nullable: true
+        target:
+          type: number
+          nullable: true
+        per_strategy:
+          type: object
+          description: Per-strategy result map (PTJ, TURTLE, SEYKOTA, SCHWARTZ)
+          additionalProperties: true
+        combined:
+          type: string
+          description: BUY, SELL, MIXED, or NO_CONSENSUS
+        as_of:
+          type: string
+          description: Current date or historical_date if provided
 
-    IndexScanOut:
+    HoldingsBREOneReq:
       type: object
       properties:
-        index: { type: string, example: NIFTY50 }
-        processed: { type: integer, example: 10 }
-        total: { type: integer, example: 50 }
-        batch:
-          type: array
-          items: { $ref: '#/components/schemas/IndexRow' }
-        next_cursor:
+        user_key:
           type: string
           nullable: true
-          description: Pass this token to /scan/index to continue
-        done: { type: boolean, example: false }
+          description: Required for OAuth unless UPSTOX_STATIC_BEARER is set
+        cursor:
+          type: integer
+          default: 0
+        prefer_upstox:
+          type: boolean
+          default: false
 
-    StrategyOut:
+    HoldingsBREOneResp:
       type: object
       properties:
-        symbol: { type: string, example: TCS }
-        date: { type: string, example: "2025-09-08" }
-        current_price: { type: number, example: 4200.25 }
-        buy_signal: { type: boolean, example: true }
-        strategies_hit:
-          type: array
-          items: { type: string }
-          example: ["Uptrend_50>200", "Near_52w_High", "RSI_55_70_MACD_Bullish"]
-        stop_loss: { type: number, example: 3990.0 }
-        target_price: { type: number, example: 4830.0 }
-
-    PriceOnDateOut:
-      type: object
-      properties:
-        symbol: { type: string, example: INFY }
-        date: { type: string, example: "2024-08-01" }
-        close: { type: number, nullable: true, example: 1585.20 }
-        found: { type: boolean, example: true }
+        symbols_count: { type: integer }
+        cursor: { type: integer }
+        next_cursor:
+          type: integer
+          nullable: true
+        done: { type: boolean }
+        analyzed_symbol: { type: string }
+        as_of: { type: string }
+        breakout_end:
+          $ref: '#/components/schemas/BreakoutEndHit'
