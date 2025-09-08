@@ -34,10 +34,10 @@ paths:
           name: user_key
           required: true
           schema: { type: string }
-          description: Arbitrary user/session ID used to store the bearer token server-side.
+          description: Arbitrary user/session ID to tag the bearer token server-side.
       responses:
         "302":
-          description: Redirects to Upstox authorization dialog.
+          description: Redirects to the Upstox authorization dialog.
 
   /oauth/upstox/callback:
     get:
@@ -80,12 +80,12 @@ paths:
                 properties:
                   symbol: { type: string }
                   found: { type: boolean }
-                  message: { type: string, nullable: true }
-                  trading_symbol: { type: string, nullable: true }
-                  instrument_key: { type: string, nullable: true }
-                  segment: { type: string, nullable: true }
-                  exchange: { type: string, nullable: true }
-                  short_name: { type: string, nullable: true }
+                  message: { type: [string, "null"] }
+                  trading_symbol: { type: [string, "null"] }
+                  instrument_key: { type: [string, "null"] }
+                  segment: { type: [string, "null"] }
+                  exchange: { type: [string, "null"] }
+                  short_name: { type: [string, "null"] }
 
   /api/historical:
     get:
@@ -183,7 +183,7 @@ paths:
                   source: { type: string }
                   count: { type: integer }
                   file: { type: string }
-                  message: { type: string, nullable: true }
+                  message: { type: [string, "null"] }
 
   /api/ltp:
     get:
@@ -209,8 +209,7 @@ paths:
                 type: object
                 properties:
                   status:
-                    type: string
-                    nullable: true
+                    type: [string, "null"]
                     description: Usually "success"
                   data:
                     type: object
@@ -218,11 +217,11 @@ paths:
                     additionalProperties:
                       type: object
                       properties:
-                        last_traded_price: { type: number, nullable: true }
-                        ltp: { type: number, nullable: true }
-                        last_price: { type: number, nullable: true }
-                        close: { type: number, nullable: true }
-                        instrument_token: { type: string, nullable: true }
+                        last_traded_price: { type: [number, "null"] }
+                        ltp: { type: [number, "null"] }
+                        last_price: { type: [number, "null"] }
+                        close: { type: [number, "null"] }
+                        instrument_token: { type: [string, "null"] }
 
   /api/fundamentals:
     get:
@@ -242,9 +241,9 @@ paths:
                 type: object
                 properties:
                   symbol: { type: string }
-                  PE: { type: number, nullable: true }
-                  PB: { type: number, nullable: true }
-                  MarketCap: { type: number, nullable: true }
+                  PE: { type: [number, "null"] }
+                  PB: { type: [number, "null"] }
+                  MarketCap: { type: [number, "null"] }
 
   /api/analyze_stock:
     post:
@@ -255,7 +254,28 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AnalyzeReq'
+              type: object
+              required: [symbol]
+              properties:
+                symbol:
+                  type: string
+                  description: Yahoo symbol (e.g., TCS.NS)
+                mode:
+                  type: string
+                  enum: [both, buy, breakout_end]
+                  default: both
+                historical_date:
+                  type: [string, "null"]
+                  description: YYYY-MM-DD for backtesting (returns price_on_date)
+                balance:
+                  type: number
+                  default: 100000
+                prefer_upstox:
+                  type: boolean
+                  default: false
+                user_key:
+                  type: [string, "null"]
+                  description: Needed only if prefer_upstox=true and using OAuth (or set UPSTOX_STATIC_BEARER)
       responses:
         "200":
           description: Analysis result
@@ -267,8 +287,7 @@ paths:
                   symbol: { type: string }
                   as_of: { type: string }
                   buy_signal:
-                    type: object
-                    nullable: true
+                    type: [object, "null"]
                     properties:
                       per_strategy:
                         type: object
@@ -277,26 +296,35 @@ paths:
                         type: string
                         description: BUY, SELL, MIXED
                       current_price:
-                        type: number
-                        nullable: true
+                        type: [number, "null"]
                       price_on_date:
-                        type: number
-                        nullable: true
+                        type: [number, "null"]
                       stop_loss:
-                        type: number
-                        nullable: true
+                        type: [number, "null"]
                       target:
-                        type: number
-                        nullable: true
+                        type: [number, "null"]
                   breakout_end:
-                    $ref: '#/components/schemas/BreakoutEndHit'
+                    type: object
+                    properties:
+                      symbol: { type: string }
+                      as_of: { type: string }
+                      current_price: { type: [number, "null"] }
+                      bearish_candle: { type: boolean, description: "Close < Open" }
+                      below_ema_fast: { type: boolean }
+                      rsi_below_50: { type: boolean }
+                      macd_hist_falling: { type: boolean }
+                      volume_distribution: { type: boolean, description: "Down day with volume spike vs 20SMA" }
+                      score: { type: integer, description: "Sum of triggered conditions (0-5)" }
+                      verdict:
+                        type: string
+                        enum: [LIKELY_END, WATCH, OK]
                   debug:
                     type: object
                     properties:
-                      ema_fast: { type: number, nullable: true }
-                      rsi14: { type: number, nullable: true }
-                      macd_hist_last: { type: number, nullable: true }
-                      vol_avg20: { type: number, nullable: true }
+                      ema_fast: { type: [number, "null"] }
+                      rsi14: { type: [number, "null"] }
+                      macd_hist_last: { type: [number, "null"] }
+                      vol_avg20: { type: [number, "null"] }
 
   /api/screen_indices_one:
     post:
@@ -307,22 +335,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ScreenOneReq'
-      responses:
-        "200":
-          description: One-symbol screening result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScreenOneResp'
-
-  /api/holdings_list:
-    get:
-      operationId: getHoldingsList
-      summary: Get Upstox holdings (normalized to YF tickers)
-      parameters:
-        - in: query
-          name: user_key
-          required: false
-          schema: { type: string }
-          description: The user_key used at OAuth login; optional if using UPSTOX
+              type: object
+              properties:
+                index:
+                  type: [string, "null"]
+                  description: e.g., NIFTY 50, BANK NIFTY, SENSEX
+                symbols:
+                  type: [array, "null"]
+                  description: Use explicit symbols instead
