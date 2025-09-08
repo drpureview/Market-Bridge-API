@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: Upstox SellWatch API
-  version: "1.2.0"
+  version: "1.2.1"
   description: >
-    Bridge API for breakout-end scans on holdings, watchlists, and single symbols,
-    plus index batching, long-term strategies, and price-on-date lookups.
+    Breakout-end scans for holdings, watchlists, and single symbols; index batching; long-term strategies;
+    price-on-date. OAuth via /auth/start → /auth/callback. Legacy OAuth routes included.
 
 servers:
   - url: https://upstox-api.onrender.com
@@ -43,7 +43,6 @@ paths:
         "200":
           description: Tokens captured
 
-  # --- Legacy aliases (so older GPT links still work) ---
   /oauth/upstox/login:
     get:
       operationId: legacyLogin
@@ -72,8 +71,7 @@ paths:
       operationId: scanHoldings
       summary: Scan holdings for breakout-end
       description: >
-        Pulls Upstox holdings, fetches OHLCV (Upstox→yfinance fallback), evaluates breakout-end
-        (RSI/near 52W high + red/≤0%/close<open/vol spike) with confirmation (LH+LL or EMA20 cross).
+        Pulls holdings, fetches OHLCV (Upstox→yfinance fallback), evaluates breakout-end with confirmations.
         Returns flagged rows only.
       responses:
         "200":
@@ -89,20 +87,18 @@ paths:
     post:
       operationId: scanWatchlist
       summary: Scan a custom watchlist
-      description: >
-        Evaluates breakout-end on provided tickers. Uses Upstox if available, else yfinance.
-        Returns flagged rows only.
+      description: Evaluates breakout-end on provided tickers. Uses Upstox if available, else yfinance.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [tickers]
               properties:
                 tickers:
                   type: array
                   items: { type: string }
-              required: [tickers]
               example:
                 tickers: ["RELIANCE", "TCS", "INFY"]
       responses:
@@ -119,8 +115,7 @@ paths:
     get:
       operationId: scanExit
       summary: Single-symbol breakout-end
-      description: >
-        Checks one symbol for breakout-end. Uses Upstox if available, else yfinance.
+      description: Checks one symbol for breakout-end. Uses Upstox if available, else yfinance.
       parameters:
         - in: query
           name: symbol
@@ -142,7 +137,7 @@ paths:
       summary: Scan an index in batches
       description: >
         Resolves index members (NSE CSV→Wikipedia fallback) and scans batch_size per call.
-        Returns next_cursor for the next batch. Each row has price, stop, target, trend.
+        Returns next_cursor. Each row has price, stop, target, trend.
       parameters:
         - in: query
           name: index
@@ -173,8 +168,7 @@ paths:
       operationId: scanStock
       summary: Single-stock long-term strategies
       description: >
-        Analyzes a symbol via 4 strategies (MA stack, near 52W high, RSI+MACD, EMA20 bounce).
-        Returns buy suggestion with stop/target.
+        Four strategies (MA stack, near 52W high, RSI+MACD, EMA20 bounce). Returns buy suggestion with stop/target.
       parameters:
         - in: query
           name: symbol
@@ -216,6 +210,21 @@ paths:
 
 components:
   schemas:
+    Metrics:
+      type: object
+      properties:
+        rsi_d0: { type: number, example: 68.2 }
+        near_high: { type: boolean, example: true }
+        ret1d_pct: { type: number, example: -2.15 }
+        vol_spike_d0: { type: boolean, example: true }
+        red_candle_d1: { type: boolean, example: true }
+        lower_high: { type: boolean, example: true }
+        lower_low: { type: boolean, example: true }
+        cross_ema20: { type: boolean, example: false }
+        high_52w: { type: number, example: 2850.0 }
+        close_d0: { type: number, example: 2795.5 }
+        close_d1: { type: number, example: 2735.2 }
+
     ScanResult:
       type: object
       properties:
@@ -234,22 +243,10 @@ components:
           example: true
         label:
           type: string
-          enum: [STRONG EXIT, WATCH CLOSELY, HOLD, DATA_UNAVAILABLE]
-          example: STRONG EXIT
+          enum: ["STRONG EXIT", "WATCH CLOSELY", "HOLD", "DATA_UNAVAILABLE"]
+          example: "STRONG EXIT"
         metrics:
-          type: object
-          properties:
-            rsi_d0: { type: number, example: 68.2 }
-            near_high: { type: boolean, example: true }
-            ret1d_pct: { type: number, example: -2.15 }
-            vol_spike_d0: { type: boolean, example: true }
-            red_candle_d1: { type: boolean, example: true }
-            lower_high: { type: boolean, example: true }
-            lower_low: { type: boolean, example: true }
-            cross_ema20: { type: boolean, example: false }
-            high_52w: { type: number, example: 2850.0 }
-            close_d0: { type: number, example: 2795.5 }
-            close_d1: { type: number, example: 2735.2 }
+          $ref: '#/components/schemas/Metrics'
 
     ExitSingleOut:
       type: object
@@ -261,10 +258,10 @@ components:
         confirm: { type: boolean, example: false }
         label:
           type: string
-          enum: [STRONG EXIT, WATCH CLOSELY, HOLD]
-          example: WATCH CLOSELY
+          enum: ["STRONG EXIT", "WATCH CLOSELY", "HOLD"]
+          example: "WATCH CLOSELY"
         metrics:
-          $ref: '#/components/schemas/ScanResult/properties/metrics'
+          $ref: '#/components/schemas/Metrics'
 
     IndexRow:
       type: object
