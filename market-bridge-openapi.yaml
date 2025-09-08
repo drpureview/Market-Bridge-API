@@ -7,7 +7,8 @@ info:
     - Random stock analysis and index scans do **not** require Upstox login.
     - Upstox OAuth is available for holdings and optional price/history fallback.
 servers:
-  - url: https://your-render-app.onrender.com
+  - url: https://upstox-api.onrender.com
+
 paths:
   /health:
     get:
@@ -21,10 +22,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  ok:
-                    type: boolean
-                  ts:
-                    type: number
+                  ok: { type: boolean }
+                  ts: { type: number }
 
   /oauth/upstox/login:
     get:
@@ -34,8 +33,7 @@ paths:
         - in: query
           name: user_key
           required: true
-          schema:
-            type: string
+          schema: { type: string }
           description: Arbitrary user/session ID used to store the bearer token server-side.
       responses:
         "302":
@@ -49,13 +47,11 @@ paths:
         - in: query
           name: code
           required: true
-          schema:
-            type: string
+          schema: { type: string }
         - in: query
           name: state
           required: false
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         "200":
           description: Success or error HTML page
@@ -72,8 +68,7 @@ paths:
         - in: query
           name: symbol
           required: true
-          schema:
-            type: string
+          schema: { type: string }
           description: Yahoo symbol (e.g., RELIANCE.NS)
       responses:
         "200":
@@ -85,12 +80,12 @@ paths:
                 properties:
                   symbol: { type: string }
                   found: { type: boolean }
-                  message: { type: string }
-                  trading_symbol: { type: string }
-                  instrument_key: { type: string }
-                  segment: { type: string }
-                  exchange: { type: string }
-                  short_name: { type: string }
+                  message: { type: string, nullable: true }
+                  trading_symbol: { type: string, nullable: true }
+                  instrument_key: { type: string, nullable: true }
+                  segment: { type: string, nullable: true }
+                  exchange: { type: string, nullable: true }
+                  short_name: { type: string, nullable: true }
 
   /api/historical:
     get:
@@ -188,7 +183,7 @@ paths:
                   source: { type: string }
                   count: { type: integer }
                   file: { type: string }
-                  message: { type: string }
+                  message: { type: string, nullable: true }
 
   /api/ltp:
     get:
@@ -207,11 +202,27 @@ paths:
           description: The user_key used at OAuth login; optional if using UPSTOX_STATIC_BEARER.
       responses:
         "200":
-          description: Upstox LTP payload (pass-through)
+          description: Upstox LTP payload
           content:
             application/json:
               schema:
                 type: object
+                properties:
+                  status:
+                    type: string
+                    nullable: true
+                    description: Usually "success"
+                  data:
+                    type: object
+                    description: Map of instrument_key -> quote fields
+                    additionalProperties:
+                      type: object
+                      properties:
+                        last_traded_price: { type: number, nullable: true }
+                        ltp: { type: number, nullable: true }
+                        last_price: { type: number, nullable: true }
+                        close: { type: number, nullable: true }
+                        instrument_token: { type: string, nullable: true }
 
   /api/fundamentals:
     get:
@@ -314,185 +325,4 @@ paths:
           name: user_key
           required: false
           schema: { type: string }
-          description: The user_key used at OAuth login; optional if using UPSTOX_STATIC_BEARER.
-      responses:
-        "200":
-          description: Symbols list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  count: { type: integer }
-                  symbols:
-                    type: array
-                    items: { type: string }
-                  raw:
-                    type: array
-                    items:
-                      type: object
-
-  /api/holdings_breakout_end_one:
-    post:
-      operationId: holdingsBreakoutEndOne
-      summary: Check Breakout Rally Ending (BRE) for ONE holding at a time (cursor)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HoldingsBREOneReq'
-      responses:
-        "200":
-          description: One holding BRE result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HoldingsBREOneResp'
-
-components:
-  schemas:
-    AnalyzeReq:
-      type: object
-      required: [symbol]
-      properties:
-        symbol:
-          type: string
-          description: Yahoo symbol (e.g., TCS.NS)
-        mode:
-          type: string
-          enum: [both, buy, breakout_end]
-          default: both
-        historical_date:
-          type: string
-          nullable: true
-          description: YYYY-MM-DD for backtesting (returns price_on_date)
-        balance:
-          type: number
-          default: 100000
-        prefer_upstox:
-          type: boolean
-          default: false
-        user_key:
-          type: string
-          nullable: true
-          description: Required only if prefer_upstox=true and using OAuth (or set UPSTOX_STATIC_BEARER)
-
-    BreakoutEndHit:
-      type: object
-      properties:
-        symbol: { type: string }
-        as_of: { type: string }
-        current_price:
-          type: number
-          nullable: true
-        bearish_candle:
-          type: boolean
-          description: Close < Open
-        below_ema_fast:
-          type: boolean
-        rsi_below_50:
-          type: boolean
-        macd_hist_falling:
-          type: boolean
-        volume_distribution:
-          type: boolean
-          description: Down day with volume spike vs 20SMA
-        score:
-          type: integer
-          description: Sum of triggered conditions (0-5)
-        verdict:
-          type: string
-          enum: [LIKELY_END, WATCH, OK]
-
-    ScreenOneReq:
-      type: object
-      properties:
-        index:
-          type: string
-          nullable: true
-          description: e.g., NIFTY 50, BANK NIFTY, SENSEX
-        symbols:
-          type: array
-          nullable: true
-          items: { type: string }
-          description: Use explicit symbols instead of index
-        cursor:
-          type: integer
-          default: 0
-          description: Position within the resolved symbols list
-        historical_date:
-          type: string
-          nullable: true
-          description: YYYY-MM-DD for backtesting (returns price_on_date)
-        balance:
-          type: number
-          default: 100000
-        prefer_upstox:
-          type: boolean
-          default: false
-        user_key:
-          type: string
-          nullable: true
-
-    ScreenOneResp:
-      type: object
-      properties:
-        symbols_count: { type: integer }
-        cursor: { type: integer }
-        next_cursor:
-          type: integer
-          nullable: true
-        done:
-          type: boolean
-        analyzed_symbol: { type: string }
-        current_price:
-          type: number
-          nullable: true
-        price_on_date:
-          type: number
-          nullable: true
-        stop_loss:
-          type: number
-          nullable: true
-        target:
-          type: number
-          nullable: true
-        per_strategy:
-          type: object
-          description: Per-strategy result map (PTJ, TURTLE, SEYKOTA, SCHWARTZ)
-          additionalProperties: true
-        combined:
-          type: string
-          description: BUY, SELL, MIXED, or NO_CONSENSUS
-        as_of:
-          type: string
-          description: Current date or historical_date if provided
-
-    HoldingsBREOneReq:
-      type: object
-      properties:
-        user_key:
-          type: string
-          nullable: true
-          description: Required for OAuth unless UPSTOX_STATIC_BEARER is set
-        cursor:
-          type: integer
-          default: 0
-        prefer_upstox:
-          type: boolean
-          default: false
-
-    HoldingsBREOneResp:
-      type: object
-      properties:
-        symbols_count: { type: integer }
-        cursor: { type: integer }
-        next_cursor:
-          type: integer
-          nullable: true
-        done: { type: boolean }
-        analyzed_symbol: { type: string }
-        as_of: { type: string }
-        breakout_end:
-          $ref: '#/components/schemas/BreakoutEndHit'
+          description: The user_key used at OAuth login; optional if using UPSTOX
