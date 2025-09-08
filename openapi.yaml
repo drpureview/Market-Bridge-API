@@ -1,0 +1,496 @@
+openapi: 3.1.0
+info:
+  title: Simple Market API
+  version: "1.0.2"
+  summary: yfinance-first market analysis with Upstox fallback (OAuth-ready)
+  description: |
+    Endpoints for OHLCV retrieval, indicators (RSI/MACD/Bollinger/ATR/EMAs/SMAs),
+    4-strategy BUY signal, breakout-rally exit scan, and batch index scans.
+    yfinance is the primary datasource; Upstox is used as a transparent fallback.
+servers:
+  - url: https://upstox-api.onrender.com
+    description: Production
+  - url: http://localhost:8000
+    description: Local development
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+tags:
+  - name: System
+  - name: OAuth
+  - name: Data
+  - name: Analysis
+  - name: Scanning
+paths:
+  /:
+    get:
+      tags: [System]
+      operationId: getRoot
+      summary: API root with examples
+      responses:
+        "200":
+          description: Root info and example calls
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RootResponse'
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Health check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  ts:
+                    type: integer
+                    description: Unix epoch seconds
+                    example: 1725853489
+  /api/indices:
+    get:
+      tags: [System]
+      operationId: listIndices
+      summary: List supported static indices
+      responses:
+        "200":
+          description: Supported index identifiers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  indices:
+                    type: array
+                    items:
+                      type: string
+                    example: ["NIFTY 50", "NIFTY BANK"]
+  /api/login_info:
+    get:
+      tags: [OAuth]
+      operationId: getLoginInfo
+      summary: Useful info for Upstox OAuth
+      responses:
+        "200":
+          description: Login info plus generated login URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginInfo'
+  /api/historical:
+    get:
+      tags: [Data]
+      operationId: getHistorical
+      summary: Fetch recent OHLCV rows (yfinance primary, Upstox fallback)
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema:
+            type: string
+          description: Ticker symbol (e.g. RELIANCE.NS)
+          example: RELIANCE.NS
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            default: 6mo
+            enum: [1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max]
+        - in: query
+          name: interval
+          required: false
+          schema:
+            type: string
+            default: 1d
+            enum: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo]
+        - in: query
+          name: as_of
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Inclusive end date for backtesting (YYYY-MM-DD)
+          example: "2025-05-15"
+      responses:
+        "200":
+          description: Recent OHLCV rows (max 100 returned)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoricalResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /api/indicators:
+    post:
+      tags: [Analysis]
+      operationId: postIndicators
+      summary: Compute indicators & OHLCV as-of a date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndicatorsRequest'
+            examples:
+              asOfExample:
+                value:
+                  symbol: RELIANCE.NS
+                  as_of: "2025-05-15"
+                  period: 2y
+                  interval: 1d
+      responses:
+        "200":
+          description: Indicators snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndicatorsResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/Unprocessable'
+  /api/signal:
+    post:
+      tags: [Analysis]
+      operationId: postSignal
+      summary: 4-strategy BUY signal with SL/Target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalRequest'
+            examples:
+              now:
+                value: { symbol: "RELIANCE.NS" }
+              backtest:
+                value: { symbol: "SBIN.NS", as_of: "2025-05-15" }
+      responses:
+        "200":
+          description: BUY signal summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/Unprocessable'
+  /api/exit_scan:
+    post:
+      tags: [Scanning]
+      operationId: postExitScan
+      summary: Detect breakout-rally exit for one or many symbols
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExitScanRequest'
+            examples:
+              list:
+                value: { symbols: ["RELIANCE.NS", "TCS.NS"], as_of: "2025-05-15" }
+              single:
+                value: { symbol: "RELIANCE.NS" }
+      responses:
+        "200":
+          description: Exit scan results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExitScanResponse'
+  /api/index_scan:
+    post:
+      tags: [Scanning]
+      operationId: postIndexScan
+      summary: Batch-scan an index or custom list in groups of 10 for BUY candidates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexScanRequest'
+            examples:
+              idx:
+                value: { index: "NIFTY 50", batch_size: 10 }
+              list:
+                value: { symbols: ["RELIANCE.NS", "TCS.NS", "SBIN.NS"], batch_size: 10, as_of: "2025-05-15" }
+      responses:
+        "200":
+          description: BUY candidates with price/SL/target
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexScanResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+  /oauth/upstox/login:
+    get:
+      tags: [OAuth]
+      operationId: getUpstoxLoginUrl
+      summary: Generate Upstox authorization URL
+      responses:
+        "200":
+          description: Login URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpstoxLoginUrl'
+  /oauth/upstox/callback:
+    get:
+      tags: [OAuth]
+      operationId: getUpstoxCallback
+      summary: Upstox OAuth callback (exchanges code for token)
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: Authorization code from Upstox
+        - in: query
+          name: state
+          required: false
+          schema:
+            type: string
+          description: Optional state value
+      responses:
+        "200":
+          description: Token exchange status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpstoxCallbackResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "500":
+          $ref: '#/components/responses/ServerError'
+components:
+  responses:
+    NotFound:
+      description: Resource or symbol not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unprocessable:
+      description: Insufficient data after indicators
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Invalid input payload or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServerError:
+      description: Server configuration issue (e.g., missing OAuth secret)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    RootResponse:
+      type: object
+      properties:
+        name: { type: string, example: "Simple Market API" }
+        version: { type: string, example: "1.0.2" }
+        yfinance_primary: { type: boolean, example: true }
+        upstox_fallback: { type: boolean, example: true }
+        docs: { type: string, format: uri, example: "https://upstox-api.onrender.com/docs" }
+        examples:
+          type: object
+    Error:
+      type: object
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: object
+      example:
+        detail: "No data for RELIANCE.NS: yfinance returned no data"
+    LoginInfo:
+      type: object
+      properties:
+        client_id_set: { type: boolean, example: true }
+        redirect_uri: { type: string, format: uri }
+        static_bearer_set: { type: boolean }
+        have_runtime_token: { type: boolean }
+        login_url: { type: string, format: uri }
+    HistoricalRow:
+      type: object
+      properties:
+        Date: { type: string, example: "2025-05-15 00:00:00" }
+        Open: { type: number, format: float }
+        High: { type: number, format: float }
+        Low:  { type: number, format: float }
+        Close:{ type: number, format: float }
+        Adj Close: { type: number, format: float, nullable: true }
+        Volume: { type: number, format: float, nullable: true }
+    HistoricalResponse:
+      type: object
+      properties:
+        symbol: { type: string, example: "RELIANCE.NS" }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/HistoricalRow' }
+    IndicatorsRequest:
+      type: object
+      required: [symbol]
+      properties:
+        symbol: { type: string, example: "RELIANCE.NS" }
+        as_of: { type: string, format: date, nullable: true, example: "2025-05-15" }
+        period: { type: string, default: "2y", example: "2y" }
+        interval: { type: string, default: "1d", example: "1d" }
+    OHLCVSnapshot:
+      type: object
+      properties:
+        open: { type: number, format: float }
+        high: { type: number, format: float }
+        low:  { type: number, format: float }
+        close:{ type: number, format: float }
+        volume: { type: number, format: float, nullable: true }
+    IndicatorsSnapshot:
+      type: object
+      properties:
+        SMA50: { type: number, nullable: true }
+        SMA200:{ type: number, nullable: true }
+        EMA10: { type: number, nullable: true }
+        EMA21: { type: number, nullable: true }
+        EMA40: { type: number, nullable: true }
+        RSI14: { type: number, nullable: true }
+        MACD: { type: number, nullable: true }
+        MACD_SIGNAL: { type: number, nullable: true }
+        MACD_HIST: { type: number, nullable: true }
+        ATR14: { type: number, nullable: true }
+        BB_MID: { type: number, nullable: true }
+        BB_UPPER: { type: number, nullable: true }
+        BB_LOWER: { type: number, nullable: true }
+    IndicatorsResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        as_of: { type: string }
+        ohlcv: { $ref: '#/components/schemas/OHLCVSnapshot' }
+        indicators: { $ref: '#/components/schemas/IndicatorsSnapshot' }
+    SignalRequest:
+      type: object
+      required: [symbol]
+      properties:
+        symbol: { type: string, example: "RELIANCE.NS" }
+        as_of: { type: string, format: date, nullable: true, example: "2025-05-15" }
+    StrategySignals:
+      type: object
+      properties:
+        PTJ: { type: boolean }
+        Turtle20: { type: boolean }
+        Seykota: { type: boolean }
+        Schwartz: { type: boolean }
+    SignalResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        as_of: { type: string }
+        signals: { $ref: '#/components/schemas/StrategySignals' }
+        consensus:
+          type: string
+          enum: [STRONG_BUY, BUY, WEAK_BUY, NO_BUY]
+        current_price: { type: number, format: float, nullable: true }
+        stop_loss: { type: number, format: float, nullable: true }
+        target: { type: number, format: float, nullable: true }
+    ExitScanRequest:
+      type: object
+      properties:
+        symbols:
+          type: array
+          items: { type: string }
+        symbol:
+          type: string
+          description: Single symbol if you prefer not to send a list
+        as_of:
+          type: string
+          format: date
+          nullable: true
+      oneOf:
+        - required: [symbol]
+        - required: [symbols]
+    ExitScanItem:
+      type: object
+      properties:
+        symbol: { type: string }
+        as_of: { type: string }
+        exit: { type: boolean, nullable: true }
+        reasons:
+          type: array
+          items: { type: string }
+        current_price: { type: number, format: float, nullable: true }
+        error: { type: string, nullable: true }
+    ExitScanResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/ExitScanItem' }
+    IndexScanRequest:
+      type: object
+      properties:
+        index:
+          type: string
+          description: Static indices supported by the server (e.g. NIFTY 50)
+        symbols:
+          type: array
+          items: { type: string }
+          description: Provide your own list instead of an index
+        batch_size:
+          type: integer
+          default: 10
+          minimum: 1
+        as_of:
+          type: string
+          format: date
+          nullable: true
+      anyOf:
+        - required: [index]
+        - required: [symbols]
+    IndexScanItem:
+      type: object
+      properties:
+        symbol: { type: string }
+        consensus:
+          type: string
+          enum: [STRONG_BUY, BUY]
+        hits:
+          type: array
+          items: { type: string }
+        as_of: { type: string }
+        current_price: { type: number, format: float, nullable: true }
+        stop_loss: { type: number, format: float, nullable: true }
+        target: { type: number, format: float, nullable: true }
+        error: { type: string, nullable: true }
+    IndexScanResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/IndexScanItem' }
+    UpstoxLoginUrl:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          example: "https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=..."
+    UpstoxCallbackResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        state: { type: string, nullable: true }
+        have_access_token: { type: boolean }
