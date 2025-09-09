@@ -1,0 +1,309 @@
+openapi: 3.0.3
+info:
+  title: Simple Market API
+  version: "1.0.3"
+  description: |
+    yfinance-first market analysis with Upstox fallback (OAuth-ready).
+    Provides OHLCV retrieval, indicators (RSI/MACD/Bollinger/ATR/EMAs/SMAs),
+    4-strategy BUY signal, breakout-rally exit scan, and batch index scans.
+servers:
+  - url: https://upstox-api.onrender.com
+    description: Production
+  - url: http://localhost:8000
+    description: Local
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  ts:
+                    type: integer
+                    example: 1725853489
+
+  /api/historical:
+    get:
+      summary: Fetch recent OHLCV rows (yfinance primary, Upstox fallback)
+      operationId: getHistorical
+      parameters:
+        - in: query
+          name: symbol
+          description: Ticker symbol (e.g. RELIANCE.NS)
+          required: true
+          schema:
+            type: string
+            example: RELIANCE.NS
+        - in: query
+          name: period
+          schema:
+            type: string
+            default: "6mo"
+            enum: ["1d","5d","1mo","3mo","6mo","1y","2y","5y","10y","ytd","max"]
+        - in: query
+          name: interval
+          schema:
+            type: string
+            default: "1d"
+            enum: ["1m","2m","5m","15m","30m","60m","90m","1h","1d","5d","1wk","1mo","3mo"]
+        - in: query
+          name: as_of
+          description: Inclusive end date for backtesting (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: "2025-05-15"
+      responses:
+        "200":
+          description: Recent OHLCV rows (max 100 returned)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol:
+                    type: string
+                    example: "RELIANCE.NS"
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        Date: { type: string, example: "2025-05-15 00:00:00" }
+                        Open: { type: number, format: float }
+                        High: { type: number, format: float }
+                        Low:  { type: number, format: float }
+                        Close:{ type: number, format: float }
+                        "Adj Close": { type: number, format: float, nullable: true }
+                        Volume: { type: number, format: float, nullable: true }
+        "404":
+          description: Symbol not found / data source error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: { type: string }
+
+  /api/indicators:
+    post:
+      summary: Compute indicators & OHLCV as-of a date
+      operationId: postIndicators
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol]
+              properties:
+                symbol: { type: string, example: "RELIANCE.NS" }
+                as_of: { type: string, format: date, nullable: true, example: "2025-05-15" }
+                period: { type: string, default: "2y", example: "2y" }
+                interval: { type: string, default: "1d", example: "1d" }
+      responses:
+        "200":
+          description: Indicators snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol: { type: string }
+                  as_of: { type: string }
+                  ohlcv:
+                    type: object
+                    properties:
+                      open: { type: number, format: float }
+                      high: { type: number, format: float }
+                      low:  { type: number, format: float }
+                      close:{ type: number, format: float }
+                      volume: { type: number, format: float, nullable: true }
+                  indicators:
+                    type: object
+                    properties:
+                      SMA50: { type: number, nullable: true }
+                      SMA200:{ type: number, nullable: true }
+                      EMA10: { type: number, nullable: true }
+                      EMA21: { type: number, nullable: true }
+                      EMA40: { type: number, nullable: true }
+                      RSI14: { type: number, nullable: true }
+                      MACD: { type: number, nullable: true }
+                      MACD_SIGNAL: { type: number, nullable: true }
+                      MACD_HIST: { type: number, nullable: true }
+                      ATR14: { type: number, nullable: true }
+                      BB_MID: { type: number, nullable: true }
+                      BB_UPPER: { type: number, nullable: true }
+                      BB_LOWER: { type: number, nullable: true }
+        "404":
+          description: Symbol not found / data source error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: { type: string }
+        "422":
+          description: Insufficient data after indicators
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: { type: string }
+
+  /api/signal:
+    post:
+      summary: 4-strategy BUY signal with SL/Target
+      operationId: postSignal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol]
+              properties:
+                symbol: { type: string, example: "RELIANCE.NS" }
+                as_of: { type: string, format: date, nullable: true, example: "2025-05-15" }
+      responses:
+        "200":
+          description: BUY signal summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol: { type: string }
+                  as_of: { type: string }
+                  signals:
+                    type: object
+                    properties:
+                      PTJ: { type: boolean }
+                      Turtle20: { type: boolean }
+                      Seykota: { type: boolean }
+                      Schwartz: { type: boolean }
+                  consensus:
+                    type: string
+                    enum: ["STRONG_BUY","BUY","WEAK_BUY","NO_BUY"]
+                  current_price: { type: number, format: float, nullable: true }
+                  stop_loss: { type: number, format: float, nullable: true }
+                  target: { type: number, format: float, nullable: true }
+        "404":
+          description: Symbol not found / data source error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: { type: string }
+        "422":
+          description: Insufficient data after indicators
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: { type: string }
+
+  /api/exit_scan:
+    post:
+      summary: Detect breakout-rally exit for one or many symbols
+      operationId: postExitScan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symbols:
+                  type: array
+                  items: { type: string }
+                symbol:
+                  type: string
+                as_of:
+                  type: string
+                  format: date
+                  nullable: true
+      responses:
+        "200":
+          description: Exit scan results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        symbol: { type: string }
+                        as_of: { type: string }
+                        exit: { type: boolean, nullable: true }
+                        reasons:
+                          type: array
+                          items: { type: string }
+                        current_price: { type: number, format: float, nullable: true }
+                        error: { type: string, nullable: true }
+
+  /api/index_scan:
+    post:
+      summary: Batch-scan an index or custom list in groups of 10 for BUY candidates
+      operationId: postIndexScan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                index:
+                  type: string
+                  description: Static indices supported by the server (e.g. NIFTY 50)
+                symbols:
+                  type: array
+                  items: { type: string }
+                batch_size:
+                  type: integer
+                  default: 10
+                  minimum: 1
+                as_of:
+                  type: string
+                  format: date
+                  nullable: true
+      responses:
+        "200":
+          description: BUY candidates with price/SL/target
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        symbol: { type: string }
+                        consensus:
+                          type: string
+                          enum: ["STRONG_BUY","BUY"]
+                        hits:
+                          type: array
+                          items: { type: string }
+                        as_of: { type: string }
+                        current_price: { type: number, format: float, nullable: true }
+                        stop_loss: { type: number, format: float, nullable: true }
+                        target: { type: number, format: float, nullable: true }
+                        error: { type: string, nullable: true }
