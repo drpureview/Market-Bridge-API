@@ -1,22 +1,30 @@
 openapi: 3.1.0
 info:
   title: Market Bridge API
-  version: "2.0.0"
+  version: "1.2.0"
   description: |
-    YFinance-first market analysis with Upstox as fallback and for holdings.
-    - Random stock analysis and index scans do **not** require Upstox login.
-    - Upstox OAuth is available for holdings and optional price/history fallback.
+    API for market data and signals using Upstox + Yahoo Finance.
+    Features:
+    - Index constituents (NSE CSVs; Sensex via Wikipedia)
+    - Historical OHLCV (Upstox with yfinance fallback)
+    - LTP via Upstox
+    - Indicators (RSI, SMA/EMA, MACD, Bollinger)
+    - Strategies (PTJ, Turtle, Seykota, Schwartz)
+    - Screeners across indices/symbols
+    - Single-stock signal
+    - Fundamentals (P/E, P/B, MarketCap, approx ROCE)
+    - Breakout detection (volume + pattern rules)
+
 servers:
-  - url: https://upstox-api.onrender.com
+  - url: https://your-app.onrender.com
 
 paths:
   /health:
     get:
-      operationId: healthCheck
       summary: Health check
       responses:
-        "200":
-          description: OK
+        '200':
+          description: Service is alive
           content:
             application/json:
               schema:
@@ -25,23 +33,27 @@ paths:
                   ok: { type: boolean }
                   ts: { type: number }
 
+  /:
+    get:
+      summary: Service metadata and examples
+      responses:
+        '200':
+          description: Root info
+
   /oauth/upstox/login:
     get:
-      operationId: upstoxLogin
-      summary: Start Upstox OAuth (manual link open)
+      summary: Start Upstox OAuth login
       parameters:
         - in: query
           name: user_key
           required: true
           schema: { type: string }
-          description: Arbitrary user/session ID to tag the bearer token server-side.
       responses:
-        "302":
-          description: Redirects to the Upstox authorization dialog.
+        '302':
+          description: Redirect to Upstox login
 
   /oauth/upstox/callback:
     get:
-      operationId: upstoxCallback
       summary: Upstox OAuth callback
       parameters:
         - in: query
@@ -53,8 +65,8 @@ paths:
           required: false
           schema: { type: string }
       responses:
-        "200":
-          description: Success or error HTML page
+        '200':
+          description: HTML page indicating result
           content:
             text/html:
               schema:
@@ -62,35 +74,47 @@ paths:
 
   /api/map:
     get:
-      operationId: mapSymbol
-      summary: Map a Yahoo symbol to Upstox instrument info (best-effort)
+      summary: Map symbol to Upstox instrument
       parameters:
         - in: query
           name: symbol
           required: true
+          description: e.g., RELIANCE.NS
           schema: { type: string }
-          description: Yahoo symbol (e.g., RELIANCE.NS)
       responses:
-        "200":
-          description: Mapping result
+        '200':
+          description: Mapping info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MapResult'
+
+  /api/ltp:
+    get:
+      summary: Get LTP from Upstox (v3)
+      parameters:
+        - in: query
+          name: instrument_keys
+          required: true
+          schema: { type: string, description: 'Comma- or pipe-separated instrument_key(s)' }
+        - in: query
+          name: user_key
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Raw Upstox LTP response
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  symbol: { type: string }
-                  found: { type: boolean }
-                  message: { type: [string, "null"] }
-                  trading_symbol: { type: [string, "null"] }
-                  instrument_key: { type: [string, "null"] }
-                  segment: { type: [string, "null"] }
-                  exchange: { type: [string, "null"] }
-                  short_name: { type: [string, "null"] }
+                description: Upstox v3 passthrough shape; keys are instrument_keys
+        '401':
+          description: Upstox not linked
 
   /api/historical:
     get:
-      operationId: getHistorical
-      summary: Historical OHLCV (yfinance primary; Yahoo chart API fallback)
+      summary: Historical data from Yahoo Finance (with internal fallback)
       parameters:
         - in: query
           name: symbol
@@ -99,247 +123,358 @@ paths:
         - in: query
           name: period
           required: false
-          schema: { type: string, default: 6mo }
-          description: e.g., 6mo, 1y, 5y
+          schema: { type: string, default: '6mo' }
         - in: query
           name: interval
           required: false
-          schema: { type: string, default: 1d }
-          description: e.g., 1d, 1wk
+          schema: { type: string, default: '1d' }
       responses:
-        "200":
+        '200':
           description: OHLCV candles
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  symbol: { type: string }
-                  candles:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        t: { type: string, description: ISO datetime }
-                        o: { type: number }
-                        h: { type: number }
-                        l: { type: number }
-                        c: { type: number }
-                        v: { type: number }
+                $ref: '#/components/schemas/HistoricalCandles'
+        '404':
+          description: No data
 
-  /api/constituents:
+  /api/historical_upstox:
     get:
-      operationId: getIndexConstituents
-      summary: Get index constituents (NSE CSV preferred; Wikipedia fallback)
+      summary: Historical data from Upstox (v3 with v2 fallback)
       parameters:
         - in: query
-          name: index
-          required: true
+          name: symbol
+          required: false
           schema: { type: string }
-          description: e.g., NIFTY 50, NIFTY BANK, SENSEX
+        - in: query
+          name: instrument_key
+          required: false
+          schema: { type: string }
+        - in: query
+          name: unit
+          required: false
+          schema: { type: string, enum: [days, weeks, months], default: weeks }
+        - in: query
+          name: interval
+          required: false
+          schema: { type: string, default: '1' }
+        - in: query
+          name: years
+          required: false
+          schema: { type: integer, default: 10 }
+        - in: query
+          name: to_date
+          required: false
+          schema: { type: string, format: date }
+        - in: query
+          name: from_date
+          required: false
+          schema: { type: string, format: date }
+        - in: query
+          name: user_key
+          required: false
+          schema: { type: string }
       responses:
-        "200":
-          description: Constituents
+        '200':
+          description: OHLCV candles
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  index: { type: string }
-                  found: { type: boolean }
-                  count: { type: integer }
-                  constituents:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        symbol: { type: string }
-                        company: { type: string }
+                $ref: '#/components/schemas/HistoricalCandlesUpstox'
+        '400':
+          description: Bad request
+        '404':
+          description: No data
 
-  /api/update_constituents:
+  /api/indicators:
     post:
-      operationId: refreshIndexConstituents
-      summary: Force refresh constituents for an index
+      summary: Compute technical indicators
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [index]
-              properties:
-                index:
-                  type: string
-                  description: Index name (e.g., NIFTY 50)
+              $ref: '#/components/schemas/IndicatorsReq'
       responses:
-        "200":
-          description: Refresh result
+        '200':
+          description: Indicators result
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  index: { type: string }
-                  source: { type: string }
-                  count: { type: integer }
-                  file: { type: string }
-                  message: { type: [string, "null"] }
-
-  /api/ltp:
-    get:
-      operationId: getLtpUpstox
-      summary: LTP via Upstox (requires OAuth or static bearer)
-      parameters:
-        - in: query
-          name: instrument_keys
-          required: true
-          schema: { type: string }
-          description: Comma-separated Upstox instrument keys.
-        - in: query
-          name: user_key
-          required: false
-          schema: { type: string }
-          description: The user_key used at OAuth login; optional if using UPSTOX_STATIC_BEARER.
-      responses:
-        "200":
-          description: Upstox LTP payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: [string, "null"]
-                    description: Usually "success"
-                  data:
-                    type: object
-                    description: Map of instrument_key -> quote fields
-                    additionalProperties:
-                      type: object
-                      properties:
-                        last_traded_price: { type: [number, "null"] }
-                        ltp: { type: [number, "null"] }
-                        last_price: { type: [number, "null"] }
-                        close: { type: [number, "null"] }
-                        instrument_token: { type: [string, "null"] }
+                $ref: '#/components/schemas/IndicatorsResp'
+        '404':
+          description: No data
 
   /api/fundamentals:
     get:
-      operationId: getFundamentals
-      summary: Basic fundamentals from yfinance
+      summary: Get fundamentals (yfinance)
       parameters:
         - in: query
           name: symbol
           required: true
           schema: { type: string }
       responses:
-        "200":
-          description: Fundamentals
+        '200':
+          description: Fundamentals info
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  symbol: { type: string }
-                  PE: { type: [number, "null"] }
-                  PB: { type: [number, "null"] }
-                  MarketCap: { type: [number, "null"] }
+                $ref: '#/components/schemas/FundamentalsResp'
 
-  /api/analyze_stock:
-    post:
-      operationId: analyzeStock
-      summary: Analyze a stock for Buy signal and/or Breakout Rally Ending (BRE)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [symbol]
-              properties:
-                symbol:
-                  type: string
-                  description: Yahoo symbol (e.g., TCS.NS)
-                mode:
-                  type: string
-                  enum: [both, buy, breakout_end]
-                  default: both
-                historical_date:
-                  type: [string, "null"]
-                  description: YYYY-MM-DD for backtesting (returns price_on_date)
-                balance:
-                  type: number
-                  default: 100000
-                prefer_upstox:
-                  type: boolean
-                  default: false
-                user_key:
-                  type: [string, "null"]
-                  description: Needed only if prefer_upstox=true and using OAuth (or set UPSTOX_STATIC_BEARER)
+  /api/constituents:
+    get:
+      summary: Get index constituents
+      parameters:
+        - in: query
+          name: index
+          required: true
+          schema: { type: string }
       responses:
-        "200":
-          description: Analysis result
+        '200':
+          description: Constituents
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  symbol: { type: string }
-                  as_of: { type: string }
-                  buy_signal:
-                    type: [object, "null"]
-                    properties:
-                      per_strategy:
-                        type: object
-                        additionalProperties: true
-                      combined:
-                        type: string
-                        description: BUY, SELL, MIXED
-                      current_price:
-                        type: [number, "null"]
-                      price_on_date:
-                        type: [number, "null"]
-                      stop_loss:
-                        type: [number, "null"]
-                      target:
-                        type: [number, "null"]
-                  breakout_end:
-                    type: object
-                    properties:
-                      symbol: { type: string }
-                      as_of: { type: string }
-                      current_price: { type: [number, "null"] }
-                      bearish_candle: { type: boolean, description: "Close < Open" }
-                      below_ema_fast: { type: boolean }
-                      rsi_below_50: { type: boolean }
-                      macd_hist_falling: { type: boolean }
-                      volume_distribution: { type: boolean, description: "Down day with volume spike vs 20SMA" }
-                      score: { type: integer, description: "Sum of triggered conditions (0-5)" }
-                      verdict:
-                        type: string
-                        enum: [LIKELY_END, WATCH, OK]
-                  debug:
-                    type: object
-                    properties:
-                      ema_fast: { type: [number, "null"] }
-                      rsi14: { type: [number, "null"] }
-                      macd_hist_last: { type: [number, "null"] }
-                      vol_avg20: { type: [number, "null"] }
+                $ref: '#/components/schemas/ConstituentsResp'
 
-  /api/screen_indices_one:
+  /api/listings:
+    get:
+      summary: List instruments by exchange
+      parameters:
+        - in: query
+          name: exchange
+          required: true
+          schema: { type: string, enum: [NSE_EQ, BSE_EQ] }
+      responses:
+        '200':
+          description: Listings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingsResp'
+
+  /api/screen_indices:
     post:
-      operationId: screenIndicesOne
-      summary: Run 4 long-term strategies on ONE symbol at a time (for batching in GPT)
+      summary: Run strategies across indices/symbols
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                index:
-                  type: [string, "null"]
-                  description: e.g., NIFTY 50, BANK NIFTY, SENSEX
-                symbols:
-                  type: [array, "null"]
-                  description: Use explicit symbols instead
+              $ref: '#/components/schemas/ScreenIndicesReq'
+      responses:
+        '200':
+          description: Screener results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenIndicesResp'
+
+  /api/signal:
+    post:
+      summary: Run strategies for single stock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalReq'
+      responses:
+        '200':
+          description: Signal result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalResp'
+        '404':
+          description: No data
+
+  /api/breakout_signal:
+    post:
+      summary: Analyze breakout for single symbol
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BreakoutSignalReq'
+      responses:
+        '200':
+          description: Breakout signal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakoutHit'
+
+  /api/breakouts_symbols_one:
+    post:
+      summary: Breakout scanner (cursor-based; one symbol per call)
+      description: Pass the full list once and increment `cursor` across calls.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BreakoutsSymbolsReq'
+      responses:
+        '200':
+          description: Scan result for the current cursor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakoutsSymbolsResp'
+        '400':
+          description: Invalid request
+
+components:
+  schemas:
+    Candle:
+      type: object
+      properties:
+        t: { type: string, description: 'ISO timestamp or pandas Date string' }
+        o: { type: number }
+        h: { type: number }
+        l: { type: number }
+        c: { type: number }
+        v: { type: number }
+
+    HistoricalCandles:
+      type: object
+      properties:
+        symbol: { type: string }
+        candles:
+          type: array
+          items: { $ref: '#/components/schemas/Candle' }
+      required: [symbol, candles]
+
+    HistoricalCandlesUpstox:
+      type: object
+      properties:
+        instrument_key: { type: string }
+        unit: { type: string, enum: [days, weeks, months] }
+        interval: { type: string }
+        from_date: { type: string, nullable: true }
+        to_date: { type: string, nullable: true }
+        count: { type: integer }
+        candles:
+          type: array
+          items: { $ref: '#/components/schemas/Candle' }
+      required: [instrument_key, unit, interval, count, candles]
+
+    MapResult:
+      type: object
+      properties:
+        symbol: { type: string }
+        found: { type: boolean }
+        message: { type: string, nullable: true }
+        trading_symbol: { type: string, nullable: true }
+        instrument_key: { type: string, nullable: true }
+        segment: { type: string, nullable: true }
+        exchange: { type: string, nullable: true }
+        short_name: { type: string, nullable: true }
+      required: [symbol, found]
+
+    IndicatorsReq:
+      type: object
+      properties:
+        symbol: { type: string }
+        data_source:
+          type: string
+          enum: [auto, upstox, yfinance]
+          default: auto
+        unit: { type: string, default: days }
+        interval: { type: string, default: '1' }
+        period: { type: string, default: '1y' }
+        hist_date: { type: string, format: date, nullable: true }
+      required: [symbol]
+
+    IndicatorsResp:
+      type: object
+      description: Computed indicators for the given symbol
+      properties:
+        symbol: { type: string }
+        as_of: { type: string }
+        SMA:
+          type: object
+          additionalProperties: { type: number, nullable: true }
+          description: e.g., SMA_50, SMA_100, SMA_150, SMA_200
+        EMA:
+          type: object
+          additionalProperties: { type: number, nullable: true }
+        RSI_14: { type: number, nullable: true }
+        MACD:
+          type: object
+          properties:
+            macd: { type: number }
+            signal: { type: number }
+            hist: { type: number }
+        Bollinger:
+          type: object
+          properties:
+            MA20: { type: number, nullable: true }
+            Upper: { type: number, nullable: true }
+            Lower: { type: number, nullable: true }
+      required: [symbol, as_of]
+
+    FundamentalsResp:
+      type: object
+      properties:
+        symbol: { type: string }
+        PE: { type: number, nullable: true }
+        PB: { type: number, nullable: true }
+        MarketCap: { type: number, nullable: true }
+        ROCE_approx: { type: number, nullable: true }
+      required: [symbol]
+
+    StrategySignal:
+      type: object
+      properties:
+        signal:
+          type: string
+          enum: [BUY, SELL, NO_TRADE, INSUFFICIENT_DATA, ZERO_QTY]
+        price: { type: number, nullable: true }
+        qty: { type: integer, nullable: true }
+        stop_loss: { type: number, nullable: true }
+        target: { type: number, nullable: true }
+        rsi: { type: number, nullable: true }
+        ma200: { type: number, nullable: true }
+        entry: { type: number, nullable: true }
+        ma10: { type: number, nullable: true }
+        ma40: { type: number, nullable: true }
+        ema10: { type: number, nullable: true }
+      required: [signal]
+
+    ScreenIndicesReq:
+      type: object
+      properties:
+        indices:
+          type: array
+          items: { type: string }
+        symbols:
+          type: array
+          items: { type: string }
+        strategies:
+          type: array
+          items:
+            type: string
+            enum: [PTJ, TURTLE, SEYKOTA, SCHWARTZ]
+        min_strategies: { type: integer, default: 2 }
+        balance: { type: number, default: 100000 }
+        data_source:
+          type: string
+          enum: [auto, upstox, yfinance]
+          default: auto
+        unit: { type: string, default: days }
+        interval: { type: string, default: '1' }
+        historical_date: { type: string, format: date, nullable: true }
+        use_upstox_price: { type: boolean, default: true }
+
+    ScreenerPerSymbol:
+      type: object
+      properties:
+        symbol: { type: string }
+        current_price: { type: number, nullable: true }
+        per_strategy:
+          type: object
+          properties:
+            PTJ: { $ref: '#/components/schemas/StrategySignal
