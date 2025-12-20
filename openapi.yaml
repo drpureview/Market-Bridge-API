@@ -2,7 +2,6 @@ openapi: 3.1.0
 info:
   title: Market Bridge API - OHLCV & Indicators Only
   version: 1.2.0
-  description: API for OHLCV data and technical indicators using Upstox and yfinance.
 
 servers:
   - url: https://upstox-api.onrender.com
@@ -13,8 +12,8 @@ paths:
       operationId: healthCheck
       summary: Health check
       responses:
-        '200':
-          description: Service is alive
+        "200":
+          description: OK
           content:
             application/json:
               schema:
@@ -35,184 +34,163 @@ paths:
           required: true
           schema:
             type: string
-          description: User-provided ticker symbol, e.g. RELIANCE, RELIANCE.NS, TCS.NS.
       responses:
-        '200':
-          description: Mapping result
+        "200":
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MapResponse'
+                $ref: "#/components/schemas/MapResponse"
 
   /api/historical:
     get:
       operationId: getHistoricalYfinance
-      summary: Historical OHLCV from yfinance (daily candles)
+      summary: Historical OHLCV from yfinance
       parameters:
         - in: query
           name: symbol
           required: true
           schema:
             type: string
-          description: Ticker symbol understood by yfinance, e.g. RELIANCE.NS.
         - in: query
           name: period
           required: false
           schema:
             type: string
-            default: '6mo'
-          description: History window, e.g. 1mo, 3mo, 6mo, 1y.
+            default: 6mo
         - in: query
           name: interval
           required: false
           schema:
             type: string
-            default: '1d'
-          description: Candle interval. Keep this at '1d' (daily candles).
+            default: 1d
       responses:
-        '200':
-          description: Daily OHLCV candles
+        "200":
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HistoricalResponse'
-        '404':
-          description: No data found for symbol/period
+                $ref: "#/components/schemas/HistoricalResponse"
+        "404":
+          description: Not Found
 
   /api/historical_upstox:
     get:
       operationId: getHistoricalUpstox
-      summary: Historical OHLCV from Upstox (daily candles preferred)
+      summary: Historical OHLCV from Upstox
       parameters:
         - in: query
           name: symbol
           required: false
           schema:
             type: string
-          description: Ticker symbol, e.g. RELIANCE.NS. Optional if instrument_key is provided.
         - in: query
           name: instrument_key
           required: false
           schema:
             type: string
-          description: Upstox instrument_key. If provided, takes precedence over symbol.
         - in: query
           name: unit
           required: false
           schema:
             type: string
-            default: days
             enum: [days, weeks, months]
-          description: Time unit. Use 'days' for daily candles.
+            default: days
         - in: query
           name: interval
           required: false
           schema:
             type: string
-            default: '1'
-          description: Candle interval. Use '1' for daily candles.
+            default: "1"
         - in: query
           name: years
           required: false
           schema:
             type: integer
             default: 10
-          description: Approximate number of years of history to fetch.
         - in: query
           name: to_date
           required: false
           schema:
             type: string
             format: date
-          description: End date (YYYY-MM-DD). Optional; defaults to latest.
         - in: query
           name: from_date
           required: false
           schema:
             type: string
             format: date
-          description: Start date (YYYY-MM-DD). Optional; derived from years if omitted.
         - in: query
           name: user_key
           required: false
           schema:
             type: string
-          description: User key for OAuth-based Upstox access when required.
       responses:
-        '200':
-          description: Daily OHLCV candles from Upstox
+        "200":
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HistoricalUpstoxResponse'
-        '400':
-          description: Missing required parameters
-        '401':
-          description: Upstox not linked or bearer not configured
-        '404':
-          description: No data from Upstox for this request
+                $ref: "#/components/schemas/HistoricalUpstoxResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not Found
 
   /api/indicators:
     post:
       operationId: computeIndicators
-      summary: Compute technical indicators (RSI, MACD, Bollinger, SMA/EMA 50/200)
+      summary: Compute technical indicators
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/IndicatorsRequest'
+              $ref: "#/components/schemas/IndicatorsRequest"
       responses:
-        '200':
-          description: Indicators result
+        "200":
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/IndicatorsResponse'
-        '404':
-          description: No data available to compute indicators
+                $ref: "#/components/schemas/IndicatorsResponse"
+        "404":
+          description: Not Found
 
 components:
   schemas:
     Candle:
       type: object
-      description: Single OHLCV candle.
       properties:
         t:
           type: string
-          description: Timestamp (ISO or string form of the index).
         o:
           type: number
-          description: Open.
         h:
           type: number
-          description: High.
         l:
           type: number
-          description: Low.
         c:
           type: number
-          description: Close.
         v:
           type: number
-          description: Volume.
       required: [t, o, h, l, c, v]
 
     HistoricalResponse:
       type: object
-      description: Historical OHLCV response from /api/historical.
       properties:
         symbol:
           type: string
         candles:
           type: array
           items:
-            $ref: '#/components/schemas/Candle'
+            $ref: "#/components/schemas/Candle"
       required: [symbol, candles]
 
     HistoricalUpstoxResponse:
       type: object
-      description: Historical OHLCV response from /api/historical_upstox.
       properties:
         instrument_key:
           type: string
@@ -221,17 +199,15 @@ components:
         interval:
           type: string
         from_date:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         to_date:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         count:
           type: integer
         candles:
           type: array
           items:
-            $ref: '#/components/schemas/Candle'
+            $ref: "#/components/schemas/Candle"
       required: [instrument_key, unit, interval, count, candles]
 
     IndicatorsRequest:
@@ -239,132 +215,93 @@ components:
       properties:
         symbol:
           type: string
-          description: Ticker symbol, normalized to NSE/BSE style (e.g. RELIANCE.NS).
         data_source:
           type: string
-          description: Data source selector: 'auto' (Upstox→yfinance), 'upstox', or 'yfinance'.
-          default: auto
           enum: [auto, upstox, yfinance]
+          default: auto
         unit:
           type: string
-          description: Time unit for Upstox requests; use 'days' for daily candles.
-          default: days
           enum: [days, weeks, months]
+          default: days
         interval:
           type: string
-          description: Candle interval; use '1' for daily candles.
-          default: '1'
+          default: "1"
         period:
           type: string
-          description: History period for yfinance fallback, e.g. '1y'.
-          default: '1y'
+          default: 1y
         hist_date:
-          type: string
+          type: ["string", "null"]
           format: date
-          nullable: true
-          description: As-of date (YYYY-MM-DD). If provided, indicators are computed up to this date.
       required: [symbol]
 
     IndicatorsResponse:
       type: object
-      description: Technical indicators computed for a symbol.
       properties:
         symbol:
           type: string
         as_of:
           type: string
-          description: Date for which indicators are computed (YYYY-MM-DD).
         RSI_14:
-          type: number
-          nullable: true
-          description: 14-period RSI.
+          type: ["number", "null"]
         MACD:
           type: object
-          description: MACD(12,26,9) values.
           properties:
             macd:
-              type: number
-              description: MACD line.
+              type: ["number", "null"]
             signal:
-              type: number
-              description: MACD signal line.
+              type: ["number", "null"]
             hist:
-              type: number
-              description: MACD histogram (macd - signal).
+              type: ["number", "null"]
         Bollinger:
           type: object
-          description: 20-period Bollinger Bands with 2 standard deviations.
           properties:
             MA20:
-              type: number
-              nullable: true
-              description: Middle band (20-period SMA).
+              type: ["number", "null"]
             Upper:
-              type: number
-              nullable: true
-              description: Upper band.
+              type: ["number", "null"]
             Lower:
-              type: number
-              nullable: true
-              description: Lower band.
+              type: ["number", "null"]
         SMA:
           type: object
-          description: Simple moving averages.
           properties:
             SMA_50:
-              type: number
-              nullable: true
+              type: ["number", "null"]
             SMA_100:
-              type: number
-              nullable: true
+              type: ["number", "null"]
             SMA_150:
-              type: number
-              nullable: true
+              type: ["number", "null"]
             SMA_200:
-              type: number
-              nullable: true
+              type: ["number", "null"]
         EMA:
           type: object
-          description: Exponential moving averages.
           properties:
             EMA_50:
-              type: number
-              nullable: true
+              type: ["number", "null"]
             EMA_100:
-              type: number
-              nullable: true
+              type: ["number", "null"]
             EMA_150:
-              type: number
-              nullable: true
+              type: ["number", "null"]
             EMA_200:
-              type: number
-              nullable: true
+              type: ["number", "null"]
       required: [symbol, as_of]
 
     MapResponse:
       type: object
-      description: Result of mapping a symbol to an Upstox instrument.
       properties:
         symbol:
           type: string
         found:
           type: boolean
         trading_symbol:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         instrument_key:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         segment:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         exchange:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         short_name:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         message:
-          type: string
-          nullable: true
+          type: ["string", "null"]
       required: [symbol, found]
