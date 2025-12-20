@@ -2,22 +2,16 @@ openapi: 3.1.0
 info:
   title: Market Bridge API - OHLCV & Indicators Only
   version: 1.2.0
-  description: >
-    Narrow-scoped API surface for Market Bridge, focused on:
-    - Daily OHLCV candles (Upstox + yfinance)
-    - Technical indicators (RSI, MACD, Bollinger, SMA/EMA 50/200)
-    - Symbol mapping for NSE/BSE normalization
+  description: API for OHLCV data and technical indicators using Upstox and yfinance.
 
 servers:
-  - url: https://your-app.onrender.com  # replace with your actual Render URL
+  - url: https://upstox-api.onrender.com
 
 paths:
   /health:
     get:
       operationId: healthCheck
       summary: Health check
-      description: >
-        Lightweight liveness probe. The assistant may optionally call this once to verify connectivity.
       responses:
         '200':
           description: Service is alive
@@ -35,8 +29,6 @@ paths:
     get:
       operationId: mapSymbol
       summary: Normalize symbol to Upstox instrument
-      description: >
-        Map a user-provided stock symbol (for example RELIANCE, RELIANCE.NS, TCS.NS) to an Upstox instrument and return trading_symbol and instrument_key.
       parameters:
         - in: query
           name: symbol
@@ -56,8 +48,6 @@ paths:
     get:
       operationId: getHistoricalYfinance
       summary: Historical OHLCV from yfinance (daily candles)
-      description: >
-        Fetch historical daily OHLCV candles from yfinance for a single symbol. Use this mainly as fallback when Upstox data is unavailable. Always request interval=1d and compute 1-week and 1-month average volumes from daily volumes.
       parameters:
         - in: query
           name: symbol
@@ -93,8 +83,6 @@ paths:
     get:
       operationId: getHistoricalUpstox
       summary: Historical OHLCV from Upstox (daily candles preferred)
-      description: >
-        Fetch historical daily OHLCV candles from Upstox for a single symbol. Use unit=days and interval=1 for daily candles. This is the primary data source; if it returns 404 or empty data, immediately fall back to /api/historical for the same symbol and period.
       parameters:
         - in: query
           name: symbol
@@ -168,8 +156,6 @@ paths:
     post:
       operationId: computeIndicators
       summary: Compute technical indicators (RSI, MACD, Bollinger, SMA/EMA 50/200)
-      description: >
-        Compute technical indicators for one symbol using daily data. With data_source='auto', the backend tries Upstox first and falls back to yfinance. Returns RSI_14, MACD (macd, signal, hist), Bollinger bands, and SMA/EMA 50 and 200 for the as-of date.
       requestBody:
         required: true
         content:
