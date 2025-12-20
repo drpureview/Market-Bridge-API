@@ -15,11 +15,12 @@ info:
       - Do not ask the user whether to switch between Upstox and yfinance; handle it automatically.
       - Do not call any other external data sources directly from the assistant.
 servers:
-  - url: https://upstox-api.onrender.com
+  - url: https://your-app.onrender.com   # replace with your actual Render URL
 
 paths:
   /health:
     get:
+      operationId: healthCheck
       summary: Health check
       description: >
         Lightweight liveness probe. The assistant may optionally call this once
@@ -39,6 +40,7 @@ paths:
 
   /api/map:
     get:
+      operationId: mapSymbol
       summary: Normalize symbol to Upstox instrument
       description: >
         Map a stock symbol to an Upstox instrument.
@@ -64,6 +66,7 @@ paths:
 
   /api/historical:
     get:
+      operationId: getHistoricalYfinance
       summary: Historical OHLCV from yfinance (daily candles)
       description: >
         Fetch historical OHLCV candles from yfinance.
@@ -110,6 +113,7 @@ paths:
 
   /api/historical_upstox:
     get:
+      operationId: getHistoricalUpstox
       summary: Historical OHLCV from Upstox (daily candles preferred)
       description: >
         Fetch historical OHLCV candles from Upstox (v3 with v2 fallback).
@@ -205,6 +209,7 @@ paths:
 
   /api/indicators:
     post:
+      operationId: computeIndicators
       summary: Compute technical indicators (RSI, MACD, Bollinger, SMA/EMA 50/200)
       description: >
         Compute technical indicators for a symbol.
