@@ -4,18 +4,12 @@ info:
   version: 1.2.0
   description: >
     Narrow-scoped API surface for Market Bridge, focused on:
-      - Daily OHLCV candles (Upstox + yfinance)
-      - Technical indicators (RSI, MACD, Bollinger, SMA/EMA 50/200)
-      - Symbol mapping for NSE/BSE normalization
+    - Daily OHLCV candles (Upstox + yfinance)
+    - Technical indicators (RSI, MACD, Bollinger, SMA/EMA 50/200)
+    - Symbol mapping for NSE/BSE normalization
 
-    Design notes for the assistant using this API:
-      - Prefer Upstox for history when available; fall back to yfinance automatically.
-      - Use only daily candles (1d) for all calculations.
-      - For multiple symbols, call the endpoints sequentially, one symbol at a time.
-      - Do not ask the user whether to switch between Upstox and yfinance; handle it automatically.
-      - Do not call any other external data sources directly from the assistant.
 servers:
-  - url: https://your-app.onrender.com   # replace with your actual Render URL
+  - url: https://your-app.onrender.com  # replace with your actual Render URL
 
 paths:
   /health:
@@ -23,8 +17,7 @@ paths:
       operationId: healthCheck
       summary: Health check
       description: >
-        Lightweight liveness probe. The assistant may optionally call this once
-        to verify connectivity.
+        Lightweight liveness probe. The assistant may optionally call this once to verify connectivity.
       responses:
         '200':
           description: Service is alive
@@ -43,12 +36,7 @@ paths:
       operationId: mapSymbol
       summary: Normalize symbol to Upstox instrument
       description: >
-        Map a stock symbol to an Upstox instrument.
-
-        Usage guidance for the assistant:
-          - Use this to normalize user-provided tickers to NSE/BSE-style symbols.
-          - Accept symbols like `RELIANCE`, `RELIANCE.NS`, `RELIANCE.BO`.
-          - Normalize to the correct trading_symbol and instrument_key.
+        Map a user-provided stock symbol (for example RELIANCE, RELIANCE.NS, TCS.NS) to an Upstox instrument and return trading_symbol and instrument_key.
       parameters:
         - in: query
           name: symbol
@@ -69,13 +57,7 @@ paths:
       operationId: getHistoricalYfinance
       summary: Historical OHLCV from yfinance (daily candles)
       description: >
-        Fetch historical OHLCV candles from yfinance.
-
-        Usage guidance for the assistant:
-          - Always request daily candles (interval=1d).
-          - Use this as a fallback when Upstox historical data is not available.
-          - Compute 1-week and 1-month average volumes from the returned candles
-            (based on daily volume data and user-specified dates).
+        Fetch historical daily OHLCV candles from yfinance for a single symbol. Use this mainly as fallback when Upstox data is unavailable. Always request interval=1d and compute 1-week and 1-month average volumes from daily volumes.
       parameters:
         - in: query
           name: symbol
@@ -89,18 +71,14 @@ paths:
           schema:
             type: string
             default: '6mo'
-          description: >
-            History window, e.g. 1mo, 3mo, 6mo, 1y. Use enough data to compute
-            1-week and 1-month average volumes.
+          description: History window, e.g. 1mo, 3mo, 6mo, 1y.
         - in: query
           name: interval
           required: false
           schema:
             type: string
             default: '1d'
-          description: >
-            Candle interval. The assistant should always keep this at '1d'
-            (daily candles only).
+          description: Candle interval. Keep this at '1d' (daily candles).
       responses:
         '200':
           description: Daily OHLCV candles
@@ -116,31 +94,20 @@ paths:
       operationId: getHistoricalUpstox
       summary: Historical OHLCV from Upstox (daily candles preferred)
       description: >
-        Fetch historical OHLCV candles from Upstox (v3 with v2 fallback).
-
-        Usage guidance for the assistant:
-          - Prefer unit=days and interval=1 to obtain daily candles.
-          - Use this endpoint as the primary data source when available.
-          - If this endpoint returns 404 or empty data, immediately fall back to
-            /api/historical for the same symbol (no user confirmation).
-          - Use the returned daily candles to compute 1-week and 1-month average
-            volumes for the requested dates.
+        Fetch historical daily OHLCV candles from Upstox for a single symbol. Use unit=days and interval=1 for daily candles. This is the primary data source; if it returns 404 or empty data, immediately fall back to /api/historical for the same symbol and period.
       parameters:
         - in: query
           name: symbol
           required: false
           schema:
             type: string
-          description: >
-            Ticker symbol, e.g. RELIANCE.NS. Optional if instrument_key is
-            provided.
+          description: Ticker symbol, e.g. RELIANCE.NS. Optional if instrument_key is provided.
         - in: query
           name: instrument_key
           required: false
           schema:
             type: string
-          description: >
-            Upstox instrument_key. If provided, takes precedence over symbol.
+          description: Upstox instrument_key. If provided, takes precedence over symbol.
         - in: query
           name: unit
           required: false
@@ -148,53 +115,44 @@ paths:
             type: string
             default: days
             enum: [days, weeks, months]
-          description: >
-            Time unit. The assistant should use 'days' for daily candles and
-            avoid other units unless strictly necessary.
+          description: Time unit. Use 'days' for daily candles.
         - in: query
           name: interval
           required: false
           schema:
             type: string
             default: '1'
-          description: >
-            Candle interval. Use '1' for daily candles.
+          description: Candle interval. Use '1' for daily candles.
         - in: query
           name: years
           required: false
           schema:
             type: integer
             default: 10
-          description: >
-            Approximate number of years of history to fetch. Use only as much as
-            needed for the requested calculations.
+          description: Approximate number of years of history to fetch.
         - in: query
           name: to_date
           required: false
           schema:
             type: string
             format: date
-          description: >
-            End date (YYYY-MM-DD). Optional; defaults to latest.
+          description: End date (YYYY-MM-DD). Optional; defaults to latest.
         - in: query
           name: from_date
           required: false
           schema:
             type: string
             format: date
-          description: >
-            Start date (YYYY-MM-DD). Optional; derived from `years` if omitted.
+          description: Start date (YYYY-MM-DD). Optional; derived from years if omitted.
         - in: query
           name: user_key
           required: false
           schema:
             type: string
-          description: >
-            User key for OAuth-based Upstox access (if STATIC_BEARER is not
-            configured on the server).
+          description: User key for OAuth-based Upstox access when required.
       responses:
         '200':
-          description: Daily (or weekly/monthly) OHLCV candles from Upstox
+          description: Daily OHLCV candles from Upstox
           content:
             application/json:
               schema:
@@ -202,34 +160,16 @@ paths:
         '400':
           description: Missing required parameters
         '401':
-          description: Upstox not linked / bearer not configured
+          description: Upstox not linked or bearer not configured
         '404':
-          description: >
-            No data from Upstox (assistant should fall back to /api/historical).
+          description: No data from Upstox for this request
 
   /api/indicators:
     post:
       operationId: computeIndicators
       summary: Compute technical indicators (RSI, MACD, Bollinger, SMA/EMA 50/200)
       description: >
-        Compute technical indicators for a symbol.
-
-        Backend behaviour:
-          - The server fetches price history from Upstox or yfinance depending
-            on `data_source`.
-          - For data_source='auto' the backend tries Upstox first and then
-            falls back to yfinance automatically.
-
-        Usage guidance for the assistant:
-          - Use only daily data (unit='days', interval='1').
-          - Do not ask the user whether to switch between Upstox and yfinance;
-            rely on data_source='auto'.
-          - Use the following fields in responses:
-              - RSI_14
-              - MACD.macd (MACD line), MACD.signal, MACD.hist
-              - Bollinger.Upper, Bollinger.MA20 (middle), Bollinger.Lower
-              - SMA.SMA_50, SMA.SMA_200
-              - EMA.EMA_50, EMA.EMA_200
+        Compute technical indicators for one symbol using daily data. With data_source='auto', the backend tries Upstox first and falls back to yfinance. Returns RSI_14, MACD (macd, signal, hist), Bollinger bands, and SMA/EMA 50 and 200 for the as-of date.
       requestBody:
         required: true
         content:
@@ -313,26 +253,20 @@ components:
       properties:
         symbol:
           type: string
-          description: >
-            Ticker symbol. The assistant should normalize user input to an
-            NSE/BSE style, e.g. RELIANCE.NS.
+          description: Ticker symbol, normalized to NSE/BSE style (e.g. RELIANCE.NS).
         data_source:
           type: string
-          description: >
-            Data source selector: 'auto' (Upstox→yfinance), 'upstox', or
-            'yfinance'. For most use-cases, the assistant should use 'auto'.
+          description: Data source selector: 'auto' (Upstox→yfinance), 'upstox', or 'yfinance'.
           default: auto
           enum: [auto, upstox, yfinance]
         unit:
           type: string
-          description: >
-            Time unit for Upstox requests; use 'days' for daily candles only.
+          description: Time unit for Upstox requests; use 'days' for daily candles.
           default: days
           enum: [days, weeks, months]
         interval:
           type: string
-          description: >
-            Candle interval; use '1' for daily candles only.
+          description: Candle interval; use '1' for daily candles.
           default: '1'
         period:
           type: string
@@ -342,9 +276,7 @@ components:
           type: string
           format: date
           nullable: true
-          description: >
-            As-of date (YYYY-MM-DD). If provided, indicators are computed up to
-            this date.
+          description: As-of date (YYYY-MM-DD). If provided, indicators are computed up to this date.
       required: [symbol]
 
     IndicatorsResponse:
@@ -391,9 +323,7 @@ components:
               description: Lower band.
         SMA:
           type: object
-          description: >
-            Simple moving averages. The assistant should primarily use SMA_50
-            and SMA_200.
+          description: Simple moving averages.
           properties:
             SMA_50:
               type: number
@@ -409,9 +339,7 @@ components:
               nullable: true
         EMA:
           type: object
-          description: >
-            Exponential moving averages. The assistant should primarily use
-            EMA_50 and EMA_200.
+          description: Exponential moving averages.
           properties:
             EMA_50:
               type: number
