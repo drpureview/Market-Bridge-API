@@ -15,7 +15,7 @@ info:
       - Do not ask the user whether to switch between Upstox and yfinance; handle it automatically.
       - Do not call any other external data sources directly from the assistant.
 servers:
-  - url: https://your-app.onrender.com
+  - url: https://upstox-api.onrender.com
 
 paths:
   /health:
