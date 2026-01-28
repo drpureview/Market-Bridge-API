@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: OHLCV Bridge API
+  version: 2.0.0
+servers:
+  - url: https://upstox-api.onrender.com
+
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  ts: { type: number }
+
+  /api/ohlcv_101:
+    get:
+      operationId: getOhlcv101
+      summary: Get daily OHLCV for t and previous N-1 trading sessions (default N=101)
+      description: >
+        Returns exactly N daily candles ending at date t (inclusive): t, t-1, ... t-(N-1) sessions.
+        Primary source: yfinance. Automatic fallback: Upstox (requires UPSTOX_STATIC_BEARER on server).
+        This endpoint avoids fragile from_date/to_date usage by fetching a wide range and slicing the last N sessions <= t.
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema:
+            type: string
+          description: "Stock symbol. Examples: SBIN, SBIN.NS, RELIANCE.NS, NSE:SBIN"
+        - in: query
+          name: t
+          required: true
+          schema:
+            type: string
+            format: date
+          description: "Target trading date YYYY-MM-DD"
+        - in: query
+          name: sessions
+          required: false
+          schema:
+            type: integer
+            default: 101
+            minimum: 2
+            maximum: 500
+        - in: query
+          name: strict
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: "If true, require that a candle for date t exists; else 404."
+        - in: query
+          name: source
+          required: false
+          schema:
+            type: string
+            enum: [auto, yfinance, upstox]
+            default: auto
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OhlcvResponse"
+        "400":
+          description: Bad Request
+        "404":
+          description: Not Found
+        "502":
+          description: Upstream source error (e.g., fallback not configured)
+
+  /api/map:
+    get:
+      operationId: mapSymbol
+      summary: Map symbol to Upstox instrument_key
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol: { type: string }
+                  found: { type: boolean }
+                  trading_symbol: { type: ["string","null"] }
+                  instrument_key: { type: ["string","null"] }
+                  segment: { type: ["string","null"] }
+                  exchange: { type: ["string","null"] }
+                  short_name: { type: ["string","null"] }
+                  message: { type: ["string","null"] }
+                required: [symbol, found]
+
+components:
+  schemas:
+    Candle:
+      type: object
+      properties:
+        t: { type: string, format: date }
+        o: { type: number }
+        h: { type: number }
+        l: { type: number }
+        c: { type: number }
+        v: { type: number }
+      required: [t, o, h, l, c, v]
+
+    OhlcvResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        requested_t: { type: string, format: date }
+        resolved_t: { type: string, format: date }
+        sessions: { type: integer }
+        source_used: { type: string, enum: [yfinance, upstox] }
+        count: { type: integer }
+        missing:
+          type: array
+          items: { type: string, format: date }
+        candles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Candle"
+      required: [symbol, requested_t, resolved_t, sessions, source_used, count, missing, candles]
