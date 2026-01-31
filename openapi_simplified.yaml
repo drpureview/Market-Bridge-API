@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: OHLCV Bridge API
-  version: 2.0.0
+  version: 2.2.0
 servers:
   - url: https://upstox-api.onrender.com
 
@@ -27,8 +27,8 @@ paths:
       summary: Get daily OHLCV for t and previous N-1 trading sessions (default N=101)
       description: >
         Returns exactly N daily candles ending at date t (inclusive): t, t-1, ... t-(N-1) sessions.
-        Primary source: yfinance. Automatic fallback: Upstox (requires UPSTOX_STATIC_BEARER on server).
-        This endpoint avoids fragile from_date/to_date usage by fetching a wide range and slicing the last N sessions <= t.
+        IMPORTANT (Render deployment): yfinance is frequently blocked/throttled, so prefer source=upstox.
+        The server fetches a wide date range and slices the last N sessions with date <= t, avoiding fragile from_date/to_date logic.
       parameters:
         - in: query
           name: symbol
@@ -51,20 +51,24 @@ paths:
             default: 101
             minimum: 2
             maximum: 500
+          description: "Number of trading sessions to return (default 101)."
         - in: query
           name: strict
           required: false
           schema:
             type: boolean
             default: true
-          description: "If true, require that a candle for date t exists; else 404."
+          description: "If true, require a candle for date t; else 404."
         - in: query
           name: source
           required: false
           schema:
             type: string
             enum: [auto, yfinance, upstox]
-            default: auto
+            default: upstox
+          description: >
+            Data source. Use upstox for production on Render.
+            auto tries upstox first, then yfinance. yfinance may be empty on Render.
       responses:
         "200":
           description: OK
@@ -75,9 +79,9 @@ paths:
         "400":
           description: Bad Request
         "404":
-          description: Not Found
+          description: Not Found (e.g., t not a trading date under strict=true, or insufficient sessions)
         "502":
-          description: Upstream source error (e.g., fallback not configured)
+          description: Upstream source/network error (e.g., Upstox auth/network issues)
 
   /api/map:
     get:
